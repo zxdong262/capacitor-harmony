@@ -2,7 +2,7 @@
   "name": "capacitor-harmony-app",
   "version": "1.0.0",
   "description": "capacitor-harmony HarmonyOS app",
-  "modelVersion": "5.3.15",
+  "modelVersion": "5.0.2",
   "dependencies": {},
   "devDependencies": {
     "@ohos/hypium": "1.0.19"
