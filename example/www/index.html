@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>capacitor-harmony demo</title>
+    <style>
+      body { font: 16px/1.5 system-ui, sans-serif; margin: 2rem; }
+      button { font-size: 1rem; padding: .5rem 1rem; }
+      pre { background: #111; color: #0f0; padding: 1rem; height: 12rem; overflow: auto; }
+    </style>
+  </head>
+  <body>
+    <h1>capacitor-harmony · WebView + Node.js</h1>
+    <p>Node is auto-started from <code>rawfile/node/main.js</code>. The button below
+       calls the Node HTTP backend bound to <code>127.0.0.1:3000</code>.</p>
+    <p>status: <span id="status">booting…</span></p>
+    <button id="ping">Call Node backend</button>
+    <h3>Node stdout / stderr</h3>
+    <pre id="log"></pre>
+
+    <script>
+      // `Capacitor` is injected by the bridge (rawfile/__capacitor/bridge.js)
+      // before this script runs.  The embedded Node runtime is reached through
+      // the native bridge directly, so no bundler is needed for this demo.
+      const log = document.getElementById('log');
+      const status = document.getElementById('status');
+
+      function append(text, isErr) {
+        const line = document.createElement('div');
+        line.textContent = text;
+        if (isErr) line.style.color = '#f55';
+        log.appendChild(line);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      // Stream the Node process output.
+      Capacitor.addListener('Node', 'stdout', (e) => append(e.line, false));
+      Capacitor.addListener('Node', 'stderr', (e) => append(e.line, true));
+
+      Capacitor.nativePromise('Node', 'getStatus')
+        .then((r) => { status.textContent = r.running ? 'running' : 'stopped'; })
+        .catch((err) => { status.textContent = 'error: ' + err; });
+
+      document.getElementById('ping').addEventListener('click', () => {
+        fetch('http://127.0.0.1:3000/api/hello')
+          .then((res) => res.json())
+          .then((data) => append('backend -> ' + JSON.stringify(data)))
+          .catch((err) => append('fetch failed: ' + err, true));
+      });
+    </script>
+  </body>
+</html>

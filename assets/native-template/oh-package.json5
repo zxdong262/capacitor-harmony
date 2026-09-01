@@ -1,0 +1,9 @@
+{
+  "name": "capacitor-harmony-app",
+  "version": "1.0.0",
+  "description": "capacitor-harmony HarmonyOS app",
+  "dependencies": {},
+  "devDependencies": {
+    "@ohos/hypium": "1.0.19"
+  }
+}

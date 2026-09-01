@@ -1,0 +1,13 @@
+{
+  "name": "capacitor-harmony-runtime",
+  "version": "1.0.0",
+  "description": "Web runtime helpers for the embedded Node.js backend in capacitor-harmony",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^6.0.0 || ^7.0.0 || ^8.0.0"
+  }
+}

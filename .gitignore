@@ -141,3 +141,23 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+/temp
+
+# ---------------------------------------------------------------------------
+# capacitor-harmony specific
+# ---------------------------------------------------------------------------
+
+# Generated HarmonyOS project (created by `npx cap add harmony`).
+harmony/
+
+# Downloaded / unpacked native artifacts (created by the prepare-* scripts).
+entry/libs/
+entry/node-headers/
+
+# HarmonyOS build / dependency caches.
+oh-package-lock.json5
+**/oh_modules/
+**/build/
+**/.preview/
+**/.cxx/
+.workbuddy

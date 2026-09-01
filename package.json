@@ -1,0 +1,85 @@
+{
+  "name": "capacitor-harmony",
+  "version": "0.1.0",
+  "description": "HarmonyOS / OpenHarmony platform adapter for Capacitor — ArkWeb WebView plus an embedded Node.js runtime (ohos-node-shared)",
+  "license": "MIT",
+  "author": {
+    "name": "ZHAO Xudong",
+    "email": "zxdong@gmail.com",
+    "url": "https://github.com/zxdong262"
+  },
+  "homepage": "https://github.com/electerm/capacitor-harmony",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/electerm/capacitor-harmony.git"
+  },
+  "bugs": {
+    "url": "https://github.com/electerm/capacitor-harmony/issues"
+  },
+  "keywords": [
+    "capacitor",
+    "harmonyos",
+    "harmony",
+    "openharmony",
+    "arkweb",
+    "arkts",
+    "nodejs",
+    "ohos-node-shared"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./runtime/dist/index.d.ts",
+      "default": "./runtime/dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "npm run build:cli && npm run build:runtime",
+    "build:cli": "tsc -p tsconfig.json",
+    "build:runtime": "tsc -p runtime/tsconfig.json",
+    "clean": "rimraf dist runtime/dist",
+    "prepublishOnly": "npm run build",
+    "capacitor:add": "node -e \"require('./dist/index').add(JSON.parse(process.env.CAPACITOR_CONFIG))\"",
+    "capacitor:copy": "node -e \"require('./dist/index').copy(JSON.parse(process.env.CAPACITOR_CONFIG))\"",
+    "capacitor:update": "node -e \"require('./dist/index').update(JSON.parse(process.env.CAPACITOR_CONFIG))\"",
+    "capacitor:open": "node -e \"require('./dist/index').open(JSON.parse(process.env.CAPACITOR_CONFIG))\""
+  },
+  "files": [
+    "dist/",
+    "runtime/dist/",
+    "assets/",
+    "native/",
+    "scripts/",
+    "docs/",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "capacitor": {
+    "platform": "harmony"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^6.0.0 || ^7.0.0 || ^8.0.0"
+  },
+  "dependencies": {
+    "fs-extra": "^11.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^6.2.2",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^20.14.0",
+    "rimraf": "^5.0.7",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

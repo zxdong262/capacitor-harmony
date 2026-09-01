@@ -1,0 +1,8 @@
+{
+  "name": "libcapacitor_node.so",
+  "version": "1.0.0",
+  "description": "Embedded Node.js runtime for capacitor-harmony",
+  "license": "MIT",
+  "types": "./index.d.ts",
+  "dependencies": {}
+}

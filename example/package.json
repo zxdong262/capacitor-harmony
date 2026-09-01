@@ -1,0 +1,16 @@
+{
+  "name": "capacitor-harmony-example",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "cap sync harmony"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.0.0",
+    "capacitor-harmony": "file:.."
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}
