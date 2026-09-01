@@ -40,6 +40,7 @@ include_directories(
 
 add_library(capacitor_node SHARED
   capacitor_node.cpp
+  node_embed.cpp
 )
 
 target_link_libraries(capacitor_node
