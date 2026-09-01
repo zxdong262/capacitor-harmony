@@ -1,13 +1,6 @@
 {
   "apiType": "stageMode",
   "buildOption": {
-    "arkOptions": {
-      "runtimeOnly": {
-        "sources": [
-          "./src/main/ets/**/*.ets"
-        ]
-      }
-    },
     "externalNativeOptions": {
       "path": "./src/main/cpp/CMakeLists.txt",
       "arguments": "",
@@ -29,7 +22,8 @@
   ],
   "targets": [
     {
-      "name": "default"
+      "name": "default",
+      "runtimeOS": "HarmonyOS"
     },
     {
       "name": "ohosTest"
