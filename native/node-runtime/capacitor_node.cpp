@@ -29,7 +29,25 @@
 #include <vector>
 
 #include <libplatform/libplatform.h>
+
+// Node's bundled NAPI headers (node_api.h -> js_native_api.h) declare the same
+// napi_* symbols as the OHOS NAPI headers we use for the addon, but with a
+// different `env` type (`node_api_basic_env` vs OHOS `napi_env`), which makes
+// the two sets conflict ("conflicting types for napi_get_instance_data", ...).
+// We only embed Node's V8 + platform API (we use v8 directly for the host
+// bridge, and OHOS NAPI for the addon), so suppress Node's NAPI declarations
+// by pre-defining their include guards. node.h itself only references
+// `napi_module` / `napi_addon_register_func` from that set (in AddLinkedBinding
+// overloads we never call), so forward-declare just those two to let the
+// header parse.
+#define SRC_NODE_API_H_
+#define SRC_JS_NATIVE_API_H_
+typedef struct napi_module napi_module;
+typedef void* napi_addon_register_func;
 #include <node.h>
+#undef SRC_NODE_API_H_
+#undef SRC_JS_NATIVE_API_H_
+
 #include <uv.h>
 
 // ----------------------------------------------------------------------------
