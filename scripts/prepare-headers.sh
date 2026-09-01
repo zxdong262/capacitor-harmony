@@ -15,7 +15,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 mkdir -p "$OUT"
-URL="https://nodejs.org/dist/$NODE_VERSION/node-headers.tar.gz"
+URL="https://nodejs.org/dist/$NODE_VERSION/node-${NODE_VERSION}-headers.tar.gz"
 echo "downloading $URL"
 curl -fL "$URL" -o "$TMP/node-headers.tar.gz"
 tar -xzf "$TMP/node-headers.tar.gz" -C "$TMP"
