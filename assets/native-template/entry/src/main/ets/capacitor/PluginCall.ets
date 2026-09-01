@@ -1,19 +1,6 @@
 import { PluginErrorData, PluginHost } from './BridgeInterfaces';
 
 /**
- * The payload shape plugins hand to `resolve()` / `notifyListeners()`.
- *
- * ArkTS rejects object literals that do not "correspond to some explicitly
- * declared class or interface" (arkts-no-untyped-obj-literals).  Neither
- * `{...} as Object` nor `Record<string, Object>` satisfies that rule, but a
- * named interface does — and the index signature keeps the keys free-form so
- * every plugin can build its own result object.
- */
-export interface PluginData {
-  [key: string]: Object | null;
-}
-
-/**
  * A single plugin method invocation coming from the WebView.
  *
  * Mirrors `com.getcapacitor.PluginCall` / `CAPPluginCall`: read the arguments

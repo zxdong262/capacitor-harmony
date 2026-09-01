@@ -3,13 +3,17 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { CapacitorPlugin } from './CapacitorPlugin';
-import { PluginCall, PluginData } from './PluginCall';
+import { PluginCall } from './PluginCall';
 import { LocalAssetServer } from './LocalAssetServer';
 import { loadRuntimeConfig, extractNodeBundle } from './CapacitorConfig';
 import { NodeRuntime } from './NodeRuntime';
 import { registerPlugins } from './PluginRegistry';
 import {
+  AppUrlPayload,
+  AppStatePayload,
+  BackButtonPayload,
   BridgeMessage,
+  EmptyPayload,
   HarmonyBridgeProxy,
   PluginHeader,
   PluginHost,
@@ -292,17 +296,17 @@ export class CapacitorBridge implements PluginHost {
 
   onResume(): void {
     this.isActive = true;
-    const resumed: PluginData = { isActive: true };
+    const resumed: AppStatePayload = { isActive: true };
     this.notifyListeners('App', 'appStateChange', resumed);
-    const emptyResume: PluginData = {};
+    const emptyResume: EmptyPayload = {};
     this.notifyListeners('App', 'resume', emptyResume);
   }
 
   onPause(): void {
     this.isActive = false;
-    const paused: PluginData = { isActive: false };
+    const paused: AppStatePayload = { isActive: false };
     this.notifyListeners('App', 'appStateChange', paused);
-    const emptyPause: PluginData = {};
+    const emptyPause: EmptyPayload = {};
     this.notifyListeners('App', 'pause', emptyPause);
   }
 
@@ -329,7 +333,7 @@ export class CapacitorBridge implements PluginHost {
       // Remember it so `App.getLaunchUrl()` can report it later.
       this.launchUrl = url;
     }
-    const opened: PluginData = { url: url, sourceApplication: want?.bundleName ?? '' };
+    const opened: AppUrlPayload = { url: url, sourceApplication: want?.bundleName ?? '' };
     this.notifyListeners('App', 'appUrlOpen', opened);
   }
 
@@ -353,7 +357,7 @@ export class CapacitorBridge implements PluginHost {
     if (!app.hasListeners('backButton')) {
       return false;
     }
-    const back: PluginData = { canGoBack: this.controller.accessBackward() };
+    const back: BackButtonPayload = { canGoBack: this.controller.accessBackward() };
     app.notifyListeners('backButton', back);
     return true;
   }

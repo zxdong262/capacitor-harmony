@@ -1,5 +1,6 @@
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall, PluginData } from '../PluginCall';
+import { PluginCall } from '../PluginCall';
+import { WebViewPathPayload } from '../BridgeInterfaces';
 
 /**
  * `@capacitor/ionic-webview` — asset path access.
@@ -20,7 +21,7 @@ export class WebViewPlugin extends CapacitorPlugin {
   }
 
   getServerBasePath(call: PluginCall): void {
-    const result: PluginData = { path: WebViewPlugin.ORIGIN };
+    const result: WebViewPathPayload = { path: WebViewPlugin.ORIGIN };
     call.resolve(result);
   }
 

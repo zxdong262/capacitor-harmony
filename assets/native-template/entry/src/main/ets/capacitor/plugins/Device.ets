@@ -4,7 +4,8 @@ import { preferences } from '@kit.ArkData';
 import { statfs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall, PluginData } from '../PluginCall';
+import { PluginCall } from '../PluginCall';
+import { BatteryPayload, DeviceIdPayload, DeviceInfoPayload, StringValuePayload } from '../BridgeInterfaces';
 
 const ID_STORE: string = 'capacitor_device';
 const ID_KEY: string = 'uuid';
@@ -23,7 +24,7 @@ export class DevicePlugin extends CapacitorPlugin {
 
   getInfo(call: PluginCall): void {
     this.getFreeDisk((diskFree: number) => {
-      const result: PluginData = {
+      const result: DeviceInfoPayload = {
         name: deviceInfo.marketName ?? deviceInfo.productModel ?? '',
         model: deviceInfo.productModel ?? '',
         platform: 'harmony',
@@ -49,14 +50,14 @@ export class DevicePlugin extends CapacitorPlugin {
       .then((store: preferences.Preferences) => {
         const existing: string = store.getSync(ID_KEY, '') as string;
         if (existing.length > 0) {
-          const result: PluginData = { identifier: existing };
+          const result: DeviceIdPayload = { identifier: existing };
           call.resolve(result);
           return;
         }
         const generated: string = util.generateRandomUUID(true);
         store.putSync(ID_KEY, generated);
         store.flush();
-        const fresh: PluginData = { identifier: generated };
+        const fresh: DeviceIdPayload = { identifier: generated };
         call.resolve(fresh);
       })
       .catch((e: Error) => {
@@ -66,7 +67,7 @@ export class DevicePlugin extends CapacitorPlugin {
 
   getBatteryInfo(call: PluginCall): void {
     const level: number = (batteryInfo.batterySOC ?? 0) / 100;
-    const result: PluginData = {
+    const result: BatteryPayload = {
       batteryLevel: level,
       isCharging: this.isCharging(),
     };
@@ -74,12 +75,12 @@ export class DevicePlugin extends CapacitorPlugin {
   }
 
   getLanguageCode(call: PluginCall): void {
-    const result: PluginData = { value: this.getLanguage() };
+    const result: StringValuePayload = { value: this.getLanguage() };
     call.resolve(result);
   }
 
   getLanguageTag(call: PluginCall): void {
-    const result: PluginData = { value: this.getLocale() };
+    const result: StringValuePayload = { value: this.getLocale() };
     call.resolve(result);
   }
 

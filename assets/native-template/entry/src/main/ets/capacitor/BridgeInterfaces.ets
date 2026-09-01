@@ -122,3 +122,178 @@ export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   node: { enable: false, entry: 'main.js', autostart: false },
   logging: { enabled: false },
 };
+
+// ---------------------------------------------------------------------------
+// Plugin result / event payload types
+//
+// ArkTS forbids both index signatures (arkts-no-indexed-signatures) and
+// object literals that do not correspond to an explicitly declared class or
+// interface (arkts-no-untyped-obj-literals). So every dynamic-looking payload
+// gets its own named interface with explicit properties.
+// ---------------------------------------------------------------------------
+
+/** Empty event payloads (`resume`, `pause`, `splashScreenHidden`). */
+export interface EmptyPayload {
+}
+
+/** `App.appStateChange` / `App.getState`. */
+export interface AppStatePayload {
+  isActive: boolean;
+}
+
+/** `App.backButton`. */
+export interface BackButtonPayload {
+  canGoBack: boolean;
+}
+
+/** `App.appUrlOpen`. */
+export interface AppUrlPayload {
+  url: string;
+  sourceApplication: string;
+}
+
+/** `App.getInfo`. */
+export interface AppInfoPayload {
+  id: string;
+  name: string;
+  build: string;
+  version: string;
+}
+
+/** `App.getUrl` and friends — a single `url` field. */
+export interface UrlPayload {
+  url: string;
+}
+
+/** `Device.getInfo`. */
+export interface DeviceInfoPayload {
+  name: string;
+  model: string;
+  platform: string;
+  operatingSystem: string;
+  osVersion: string;
+  manufacturer: string;
+  isVirtual: boolean;
+  memUsed: number;
+  diskFree: number;
+  diskTotal: number;
+  realDiskFree: number;
+  realDiskTotal: number;
+  webViewVersion: string;
+  apiLevel: number;
+}
+
+/** `Device.getId`. */
+export interface DeviceIdPayload {
+  identifier: string;
+}
+
+/** `Device.getBatteryInfo`. */
+export interface BatteryPayload {
+  batteryLevel: number;
+  isCharging: boolean;
+}
+
+/** A single `value: string` result (language code, locale code, ...). */
+export interface StringValuePayload {
+  value: string;
+}
+
+/** `Filesystem.readFile` (text or base64). */
+export interface FileDataPayload {
+  data: string;
+}
+
+/** `Filesystem.readdir`. */
+export interface FileListPayload {
+  files: string[];
+}
+
+/** `Filesystem.stat`. */
+export interface FileStatPayload {
+  type: string;
+  size: number;
+  ctime: number;
+  mtime: number;
+  uri: string;
+}
+
+/** `Filesystem.getUri` — a single `uri` field. */
+export interface FileUriPayload {
+  uri: string;
+}
+
+/** `Filesystem.checkPermissions`. */
+export interface StoragePermPayload {
+  publicStorage: string;
+}
+
+/** Keyboard height events. */
+export interface KeyboardHeightPayload {
+  keyboardHeight: number;
+}
+
+/** `Network.getStatus` / `Network.onStatusChange`. */
+export interface NetworkStatusPayload {
+  connected: boolean;
+  connectionType: string;
+}
+
+/** Node.js stdout/stderr lines. */
+export interface NodeLinePayload {
+  line: string;
+}
+
+/** Node.js process exit. */
+export interface NodeExitPayload {
+  code: number;
+}
+
+/** `Node.getStatus` / `Node.start` / `Node.stop`. */
+export interface NodeRunningPayload {
+  running: boolean;
+}
+
+/** `Node.getInfo`. */
+export interface NodeInfoPayload {
+  entry: string;
+  entryPath: string;
+  dir: string;
+}
+
+/** `Preferences.get` — value may be any JSON value or null. */
+export interface PrefValuePayload {
+  value: Object | null;
+}
+
+/** `Preferences.keys`. */
+export interface PrefKeysPayload {
+  keys: string[];
+}
+
+/** `Preferences.migrate`. */
+export interface PrefMigratePayload {
+  migrated: string[];
+  existing: string[];
+}
+
+/** `StatusBar.getInfo`. */
+export interface StatusBarInfoPayload {
+  visible: boolean;
+  style: string;
+  color: string;
+  backgroundColor: string;
+  contentOffset: number;
+  overlays: boolean;
+}
+
+/** `WebView.getOriginalUrl` — a single `path` field. */
+export interface WebViewPathPayload {
+  path: string;
+}
+
+/** `Clipboard.read`. */
+export interface ClipboardValuePayload {
+  value: string;
+  type: string;
+}

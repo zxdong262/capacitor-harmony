@@ -1,7 +1,8 @@
 import { preferences } from '@kit.ArkData';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall, PluginData } from '../PluginCall';
+import { PluginCall } from '../PluginCall';
+import { PrefKeysPayload, PrefMigratePayload, PrefValuePayload } from '../BridgeInterfaces';
 
 const TAG: string = 'PreferencesPlugin';
 const DOMAIN: number = 0x0000;
@@ -51,16 +52,16 @@ export class PreferencesPlugin extends CapacitorPlugin {
     this.withStore(call, (store: preferences.Preferences) => {
       const raw: Object = store.getSync(key, '') as Object;
       if (typeof raw !== 'string' || raw.length === 0) {
-        const missing: PluginData = { value: null };
+        const missing: PrefValuePayload = { value: null };
         call.resolve(missing);
         return;
       }
       try {
-        const parsed: PluginData = { value: JSON.parse(raw) as Object };
+        const parsed: PrefValuePayload = { value: JSON.parse(raw) as Object };
         call.resolve(parsed);
       } catch (e) {
         // Stored before we switched to JSON, or written by native code.
-        const plain: PluginData = { value: raw };
+        const plain: PrefValuePayload = { value: raw };
         call.resolve(plain);
       }
     });
@@ -68,7 +69,10 @@ export class PreferencesPlugin extends CapacitorPlugin {
 
   set(call: PluginCall): void {
     const key: string = call.getString('key');
-    const value: Object = call.options['value'] ?? (null as Object);
+    let value: Object | null = null;
+    if (call.options['value'] !== undefined) {
+      value = call.options['value'];
+    }
     this.withStore(call, (store: preferences.Preferences) => {
       try {
         store.putSync(key, JSON.stringify(value));
@@ -91,8 +95,7 @@ export class PreferencesPlugin extends CapacitorPlugin {
 
   keys(call: PluginCall): void {
     this.withStore(call, (store: preferences.Preferences) => {
-      const all: Array<string> = store.getAllSync ? [] : [];
-      const listed: PluginData = { keys: this.collectKeys(store, all) };
+      const listed: PrefKeysPayload = { keys: this.collectKeys(store, []) };
       call.resolve(listed);
     });
   }
@@ -107,7 +110,7 @@ export class PreferencesPlugin extends CapacitorPlugin {
 
   migrate(call: PluginCall): void {
     // Nothing to migrate — this platform never used the old Cordova store.
-    const migrated: PluginData = { migrated: [], existing: [] };
+    const migrated: PrefMigratePayload = { migrated: [], existing: [] };
     call.resolve(migrated);
   }
 

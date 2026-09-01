@@ -1,6 +1,7 @@
 import { pasteboard } from '@kit.BasicServicesKit';
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall, PluginData } from '../PluginCall';
+import { PluginCall } from '../PluginCall';
+import { ClipboardValuePayload } from '../BridgeInterfaces';
 
 /**
  * `@capacitor/clipboard` — system pasteboard.
@@ -42,7 +43,7 @@ export class ClipboardPlugin extends CapacitorPlugin {
       board
         .getData()
         .then((data: pasteboard.PasteData) => {
-          const read: PluginData = { value: data.getPrimaryText(), type: 'text/plain' };
+          const read: ClipboardValuePayload = { value: data.getPrimaryText(), type: 'text/plain' };
           call.resolve(read);
         })
         .catch((e: Error) => {

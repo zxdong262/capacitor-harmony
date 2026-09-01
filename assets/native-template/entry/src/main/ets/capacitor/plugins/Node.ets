@@ -1,7 +1,8 @@
 import { common } from '@kit.AbilityKit';
 import { PluginHost } from '../BridgeInterfaces';
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall, PluginData } from '../PluginCall';
+import { PluginCall } from '../PluginCall';
+import { NodeExitPayload, NodeInfoPayload, NodeLinePayload, NodeRunningPayload } from '../BridgeInterfaces';
 import { NodeRuntime } from '../NodeRuntime';
 
 /**
@@ -20,11 +21,11 @@ export class NodePlugin extends CapacitorPlugin {
     super(bridge, context);
     this.node = bridge.getNodeRuntime();
     this.node.onOutput((level: string, line: string) => {
-      const out: PluginData = { line: line };
+      const out: NodeLinePayload = { line: line };
       this.notifyListeners(level === 'error' ? 'stderr' : 'stdout', out);
     });
     this.node.onExit((code: number) => {
-      const exited: PluginData = { code: code };
+      const exited: NodeExitPayload = { code: code };
       this.notifyListeners('exit', exited);
     });
   }
@@ -40,7 +41,7 @@ export class NodePlugin extends CapacitorPlugin {
   start(call: PluginCall): void {
     const ok: boolean = this.node.start();
     if (ok) {
-      const started: PluginData = { running: true };
+      const started: NodeRunningPayload = { running: true };
       call.resolve(started);
     } else {
       call.reject(this.node.getLastError() || 'node failed to start', 'START_FAILED');
@@ -49,17 +50,17 @@ export class NodePlugin extends CapacitorPlugin {
 
   stop(call: PluginCall): void {
     this.node.stop();
-    const stopped: PluginData = { running: false };
+    const stopped: NodeRunningPayload = { running: false };
     call.resolve(stopped);
   }
 
   getStatus(call: PluginCall): void {
-    const status: PluginData = { running: this.node.isRunning() };
+    const status: NodeRunningPayload = { running: this.node.isRunning() };
     call.resolve(status);
   }
 
   getInfo(call: PluginCall): void {
-    const info: PluginData = {
+    const info: NodeInfoPayload = {
       entry: this.node.getEntry(),
       entryPath: this.node.getEntryPath(),
       dir: this.node.getDir(),

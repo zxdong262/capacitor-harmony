@@ -1,6 +1,7 @@
 import { bundleManager } from '@kit.AbilityKit';
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall, PluginData } from '../PluginCall';
+import { PluginCall } from '../PluginCall';
+import { AppInfoPayload, AppStatePayload, UrlPayload } from '../BridgeInterfaces';
 
 /**
  * `@capacitor/app` — lifecycle, launch URL and app metadata.
@@ -20,7 +21,7 @@ export class AppPlugin extends CapacitorPlugin {
     bundleManager
       .getBundleInfoForSelf(bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION)
       .then((info: bundleManager.BundleInfo) => {
-        const result: PluginData = {
+        const result: AppInfoPayload = {
           id: info.name,
           name: info.name,
           build: String(info.versionCode ?? 0),
@@ -34,13 +35,13 @@ export class AppPlugin extends CapacitorPlugin {
   }
 
   getState(call: PluginCall): void {
-    const result: PluginData = { isActive: this.bridge.isAppActive() };
+    const result: AppStatePayload = { isActive: this.bridge.isAppActive() };
     call.resolve(result);
   }
 
   getLaunchUrl(call: PluginCall): void {
     const url: string = this.bridge.getLaunchUrl();
-    const result: PluginData = { url: url };
+    const result: UrlPayload = { url: url };
     call.resolve(result);
   }
 

@@ -1,7 +1,8 @@
 import { connection } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall, PluginData } from '../PluginCall';
+import { PluginCall } from '../PluginCall';
+import { NetworkStatusPayload } from '../BridgeInterfaces';
 
 const TAG: string = 'NetworkPlugin';
 const DOMAIN: number = 0x0000;
@@ -118,8 +119,8 @@ export class NetworkPlugin extends CapacitorPlugin {
     return 'unknown';
   }
 
-  private status(): PluginData {
-    const snapshot: PluginData = {
+  private status(): NetworkStatusPayload {
+    const snapshot: NetworkStatusPayload = {
       connected: this.connected,
       connectionType: this.connectionType,
     };
