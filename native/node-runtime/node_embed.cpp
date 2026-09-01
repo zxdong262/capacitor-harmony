@@ -181,19 +181,19 @@ static void NodeThreadMain(std::string entry_path, std::string data_dir,
   v8::V8::DisposePlatform();
   node::TearDownOncePerProcess();
 
-  cap_exit_cb exit_cb = nullptr;
+  cap_exit_cb saved_exit_cb = nullptr;
   {
     std::lock_guard<std::mutex> lock(g_state_mutex);
     g_running = false;
     g_env = nullptr;
     g_out_cb = nullptr;
-    exit_cb = g_exit_cb;
+    saved_exit_cb = g_exit_cb;
     g_exit_cb = nullptr;
   }
 
   // Inform the OHOS side the process ended.
-  if (exit_cb != nullptr) {
-    exit_cb(g_exit_code);
+  if (saved_exit_cb != nullptr) {
+    saved_exit_cb(g_exit_code);
   }
 }
 
