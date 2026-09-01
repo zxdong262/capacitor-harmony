@@ -1,5 +1,5 @@
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall } from '../PluginCall';
+import { PluginCall, PluginData } from '../PluginCall';
 
 /**
  * `@capacitor/splash-screen` — thin wrapper over the system launch window.
@@ -22,7 +22,8 @@ export class SplashScreenPlugin extends CapacitorPlugin {
   addListener(call: PluginCall): void {
     super.addListener(call);
     if (call.getString('eventName') === 'splashScreenHidden') {
-      this.notifyListeners('splashScreenHidden', {} as Object);
+      const payload: PluginData = {};
+      this.notifyListeners('splashScreenHidden', payload);
     }
   }
 

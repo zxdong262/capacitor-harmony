@@ -1,6 +1,6 @@
 import { window } from '@kit.ArkUI';
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall } from '../PluginCall';
+import { PluginCall, PluginData } from '../PluginCall';
 
 /**
  * `@capacitor/status-bar` — the system status bar.
@@ -52,14 +52,15 @@ export class StatusBarPlugin extends CapacitorPlugin {
     this.withWindow(call, (win: window.Window) => {
       const props: window.SystemBarProperties = win.getWindowSystemBarProperties();
       const lightIcons: boolean = props.isStatusBarLightIcon === true;
-      call.resolve({
+      const info: PluginData = {
         visible: true,
         style: lightIcons ? 'LIGHT' : 'DARK',
         color: props.statusBarColor ?? '#000000',
         backgroundColor: props.statusBarColor ?? '#000000',
         contentOffset: 0,
         overlays: false,
-      } as Object);
+      };
+      call.resolve(info);
     });
   }
 

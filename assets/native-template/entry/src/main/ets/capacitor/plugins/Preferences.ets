@@ -1,7 +1,7 @@
 import { preferences } from '@kit.ArkData';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall } from '../PluginCall';
+import { PluginCall, PluginData } from '../PluginCall';
 
 const TAG: string = 'PreferencesPlugin';
 const DOMAIN: number = 0x0000;
@@ -51,14 +51,17 @@ export class PreferencesPlugin extends CapacitorPlugin {
     this.withStore(call, (store: preferences.Preferences) => {
       const raw: Object = store.getSync(key, '') as Object;
       if (typeof raw !== 'string' || raw.length === 0) {
-        call.resolve({ value: null } as Object);
+        const missing: PluginData = { value: null };
+        call.resolve(missing);
         return;
       }
       try {
-        call.resolve({ value: JSON.parse(raw) as Object } as Object);
+        const parsed: PluginData = { value: JSON.parse(raw) as Object };
+        call.resolve(parsed);
       } catch (e) {
         // Stored before we switched to JSON, or written by native code.
-        call.resolve({ value: raw } as Object);
+        const plain: PluginData = { value: raw };
+        call.resolve(plain);
       }
     });
   }
@@ -89,7 +92,8 @@ export class PreferencesPlugin extends CapacitorPlugin {
   keys(call: PluginCall): void {
     this.withStore(call, (store: preferences.Preferences) => {
       const all: Array<string> = store.getAllSync ? [] : [];
-      call.resolve({ keys: this.collectKeys(store, all) } as Object);
+      const listed: PluginData = { keys: this.collectKeys(store, all) };
+      call.resolve(listed);
     });
   }
 
@@ -103,7 +107,8 @@ export class PreferencesPlugin extends CapacitorPlugin {
 
   migrate(call: PluginCall): void {
     // Nothing to migrate — this platform never used the old Cordova store.
-    call.resolve({ migrated: [], existing: [] } as Object);
+    const migrated: PluginData = { migrated: [], existing: [] };
+    call.resolve(migrated);
   }
 
   removeOld(call: PluginCall): void {

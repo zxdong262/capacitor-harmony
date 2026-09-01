@@ -1,6 +1,6 @@
 import { pasteboard } from '@kit.BasicServicesKit';
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall } from '../PluginCall';
+import { PluginCall, PluginData } from '../PluginCall';
 
 /**
  * `@capacitor/clipboard` — system pasteboard.
@@ -42,7 +42,8 @@ export class ClipboardPlugin extends CapacitorPlugin {
       board
         .getData()
         .then((data: pasteboard.PasteData) => {
-          call.resolve({ value: data.getPrimaryText(), type: 'text/plain' } as Object);
+          const read: PluginData = { value: data.getPrimaryText(), type: 'text/plain' };
+          call.resolve(read);
         })
         .catch((e: Error) => {
           call.reject(`clipboard read failed: ${e.message}`);

@@ -4,7 +4,7 @@ import { preferences } from '@kit.ArkData';
 import { statfs } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall } from '../PluginCall';
+import { PluginCall, PluginData } from '../PluginCall';
 
 const ID_STORE: string = 'capacitor_device';
 const ID_KEY: string = 'uuid';
@@ -23,7 +23,7 @@ export class DevicePlugin extends CapacitorPlugin {
 
   getInfo(call: PluginCall): void {
     this.getFreeDisk((diskFree: number) => {
-      call.resolve({
+      const result: PluginData = {
         name: deviceInfo.marketName ?? deviceInfo.productModel ?? '',
         model: deviceInfo.productModel ?? '',
         platform: 'harmony',
@@ -38,7 +38,8 @@ export class DevicePlugin extends CapacitorPlugin {
         realDiskTotal: 0,
         webViewVersion: '',
         apiLevel: deviceInfo.sdkApiVersion ?? 0,
-      } as Object);
+      };
+      call.resolve(result);
     });
   }
 
@@ -48,13 +49,15 @@ export class DevicePlugin extends CapacitorPlugin {
       .then((store: preferences.Preferences) => {
         const existing: string = store.getSync(ID_KEY, '') as string;
         if (existing.length > 0) {
-          call.resolve({ identifier: existing } as Object);
+          const result: PluginData = { identifier: existing };
+          call.resolve(result);
           return;
         }
         const generated: string = util.generateRandomUUID(true);
         store.putSync(ID_KEY, generated);
         store.flush();
-        call.resolve({ identifier: generated } as Object);
+        const fresh: PluginData = { identifier: generated };
+        call.resolve(fresh);
       })
       .catch((e: Error) => {
         call.reject(`getId failed: ${e.message}`);
@@ -63,18 +66,21 @@ export class DevicePlugin extends CapacitorPlugin {
 
   getBatteryInfo(call: PluginCall): void {
     const level: number = (batteryInfo.batterySOC ?? 0) / 100;
-    call.resolve({
+    const result: PluginData = {
       batteryLevel: level,
       isCharging: this.isCharging(),
-    } as Object);
+    };
+    call.resolve(result);
   }
 
   getLanguageCode(call: PluginCall): void {
-    call.resolve({ value: this.getLanguage() } as Object);
+    const result: PluginData = { value: this.getLanguage() };
+    call.resolve(result);
   }
 
   getLanguageTag(call: PluginCall): void {
-    call.resolve({ value: this.getLocale() } as Object);
+    const result: PluginData = { value: this.getLocale() };
+    call.resolve(result);
   }
 
   private getLanguage(): string {

@@ -1,7 +1,7 @@
 import { window } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall } from '../PluginCall';
+import { PluginCall, PluginData } from '../PluginCall';
 
 const TAG: string = 'KeyboardPlugin';
 const DOMAIN: number = 0x0000;
@@ -29,7 +29,7 @@ export class KeyboardPlugin extends CapacitorPlugin {
       .getLastWindow(this.context)
       .then((win: window.Window) => {
         win.on('keyboardHeightChange', (height: number) => {
-          const payload: Record<string, Object> = { keyboardHeight: height } as Record<string, Object>;
+          const payload: PluginData = { keyboardHeight: height };
           if (height > 0) {
             this.notifyListeners('keyboardWillShow', payload as Object);
             this.notifyListeners('keyboardDidShow', payload as Object);

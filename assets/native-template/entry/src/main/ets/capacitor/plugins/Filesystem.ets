@@ -1,7 +1,7 @@
 import { util } from '@kit.ArkTS';
 import fs from '@ohos.file.fs';
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall } from '../PluginCall';
+import { PluginCall, PluginData } from '../PluginCall';
 
 /**
  * `@capacitor/filesystem` — files in the app sandbox.
@@ -50,10 +50,12 @@ export class FilesystemPlugin extends CapacitorPlugin {
       fs.closeSync(file);
       if (encoding === 'base64') {
         const helper: util.Base64Helper = new util.Base64Helper();
-        call.resolve({ data: helper.encodeToStringSync(new Uint8Array(buffer)) } as Object);
+        const encoded: PluginData = { data: helper.encodeToStringSync(new Uint8Array(buffer)) };
+        call.resolve(encoded);
       } else {
         const text: string = new util.TextDecoder('utf-8').decodeToString(new Uint8Array(buffer));
-        call.resolve({ data: text } as Object);
+        const decoded: PluginData = { data: text };
+        call.resolve(decoded);
       }
     } catch (e) {
       call.reject(`readFile failed: ${String(e)}`);
@@ -152,7 +154,8 @@ export class FilesystemPlugin extends CapacitorPlugin {
         return;
       }
       const entries: string[] = fs.listFileSync(path);
-      call.resolve({ files: entries } as Object);
+      const listed: PluginData = { files: entries };
+      call.resolve(listed);
     } catch (e) {
       call.reject(`readdir failed: ${String(e)}`);
     }
@@ -162,13 +165,14 @@ export class FilesystemPlugin extends CapacitorPlugin {
     const path: string = this.resolvePath(call.getString('directory'), call.getString('path'));
     try {
       const st: fs.Stat = fs.statSync(path);
-      call.resolve({
+      const stat: PluginData = {
         type: st.isDirectory() ? 'directory' : 'file',
         size: st.size,
         ctime: st.ctime,
         mtime: st.mtime,
         uri: `file://${path}`,
-      } as Object);
+      };
+      call.resolve(stat);
     } catch (e) {
       call.reject(`stat failed: ${String(e)}`, 'NOT_EXISTS');
     }
@@ -176,7 +180,8 @@ export class FilesystemPlugin extends CapacitorPlugin {
 
   getUri(call: PluginCall): void {
     const path: string = this.resolvePath(call.getString('directory'), call.getString('path'));
-    call.resolve({ uri: `file://${path}` } as Object);
+    const uri: PluginData = { uri: `file://${path}` };
+    call.resolve(uri);
   }
 
   rename(call: PluginCall): void {
@@ -217,11 +222,13 @@ export class FilesystemPlugin extends CapacitorPlugin {
   }
 
   checkPermissions(call: PluginCall): void {
-    call.resolve({ publicStorage: 'granted' } as Object);
+    const perms: PluginData = { publicStorage: 'granted' };
+    call.resolve(perms);
   }
 
   requestPermissions(call: PluginCall): void {
-    call.resolve({ publicStorage: 'granted' } as Object);
+    const perms: PluginData = { publicStorage: 'granted' };
+    call.resolve(perms);
   }
 
   downloadFile(call: PluginCall): void {

@@ -5,11 +5,6 @@
       "path": "./src/main/cpp/CMakeLists.txt",
       "arguments": "",
       "cppFlags": ""
-    },
-    // Relax ArkTS strict-syntax checks (untyped object literals, etc.) so the
-    // bridge code (ported from TS) compiles against the SDK's ArkTS frontend.
-    "arkOptions": {
-      "strictArkTSCheck": false
     }
   },
   "buildOptionSet": [

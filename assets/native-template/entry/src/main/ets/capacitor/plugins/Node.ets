@@ -1,7 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { PluginHost } from '../BridgeInterfaces';
 import { CapacitorPlugin } from '../CapacitorPlugin';
-import { PluginCall } from '../PluginCall';
+import { PluginCall, PluginData } from '../PluginCall';
 import { NodeRuntime } from '../NodeRuntime';
 
 /**
@@ -20,10 +20,12 @@ export class NodePlugin extends CapacitorPlugin {
     super(bridge, context);
     this.node = bridge.getNodeRuntime();
     this.node.onOutput((level: string, line: string) => {
-      this.notifyListeners(level === 'error' ? 'stderr' : 'stdout', { line: line } as Object);
+      const out: PluginData = { line: line };
+      this.notifyListeners(level === 'error' ? 'stderr' : 'stdout', out);
     });
     this.node.onExit((code: number) => {
-      this.notifyListeners('exit', { code: code } as Object);
+      const exited: PluginData = { code: code };
+      this.notifyListeners('exit', exited);
     });
   }
 
@@ -38,7 +40,8 @@ export class NodePlugin extends CapacitorPlugin {
   start(call: PluginCall): void {
     const ok: boolean = this.node.start();
     if (ok) {
-      call.resolve({ running: true } as Object);
+      const started: PluginData = { running: true };
+      call.resolve(started);
     } else {
       call.reject(this.node.getLastError() || 'node failed to start', 'START_FAILED');
     }
@@ -46,18 +49,21 @@ export class NodePlugin extends CapacitorPlugin {
 
   stop(call: PluginCall): void {
     this.node.stop();
-    call.resolve({ running: false } as Object);
+    const stopped: PluginData = { running: false };
+    call.resolve(stopped);
   }
 
   getStatus(call: PluginCall): void {
-    call.resolve({ running: this.node.isRunning() } as Object);
+    const status: PluginData = { running: this.node.isRunning() };
+    call.resolve(status);
   }
 
   getInfo(call: PluginCall): void {
-    call.resolve({
+    const info: PluginData = {
       entry: this.node.getEntry(),
       entryPath: this.node.getEntryPath(),
       dir: this.node.getDir(),
-    } as Object);
+    };
+    call.resolve(info);
   }
 }

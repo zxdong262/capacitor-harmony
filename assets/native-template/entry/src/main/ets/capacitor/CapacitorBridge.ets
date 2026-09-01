@@ -3,7 +3,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { CapacitorPlugin } from './CapacitorPlugin';
-import { PluginCall } from './PluginCall';
+import { PluginCall, PluginData } from './PluginCall';
 import { LocalAssetServer } from './LocalAssetServer';
 import { loadRuntimeConfig, extractNodeBundle } from './CapacitorConfig';
 import { NodeRuntime } from './NodeRuntime';
@@ -13,6 +13,7 @@ import {
   HarmonyBridgeProxy,
   PluginHeader,
   PluginHost,
+  PluginMethod,
   PluginResult,
   RuntimeConfig,
 } from './BridgeInterfaces';
@@ -106,14 +107,16 @@ export class CapacitorBridge implements PluginHost {
   getPluginHeaders(): PluginHeader[] {
     const headers: PluginHeader[] = [];
     this.plugins.forEach((plugin: CapacitorPlugin) => {
-      const methods: { name: string; rtype: string }[] = [];
+      const methods: PluginMethod[] = [];
       plugin.getMethods().forEach((name: string) => {
         if (LISTENER_METHODS.includes(name)) {
           return;
         }
-        methods.push({ name: name, rtype: 'promise' });
+        const method: PluginMethod = { name: name, rtype: 'promise' };
+        methods.push(method);
       });
-      headers.push({ name: plugin.getPluginId(), methods: methods });
+      const header: PluginHeader = { name: plugin.getPluginId(), methods: methods };
+      headers.push(header);
     });
     return headers;
   }
@@ -289,14 +292,18 @@ export class CapacitorBridge implements PluginHost {
 
   onResume(): void {
     this.isActive = true;
-    this.notifyListeners('App', 'appStateChange', { isActive: true } as Object);
-    this.notifyListeners('App', 'resume', {} as Object);
+    const resumed: PluginData = { isActive: true };
+    this.notifyListeners('App', 'appStateChange', resumed);
+    const emptyResume: PluginData = {};
+    this.notifyListeners('App', 'resume', emptyResume);
   }
 
   onPause(): void {
     this.isActive = false;
-    this.notifyListeners('App', 'appStateChange', { isActive: false } as Object);
-    this.notifyListeners('App', 'pause', {} as Object);
+    const paused: PluginData = { isActive: false };
+    this.notifyListeners('App', 'appStateChange', paused);
+    const emptyPause: PluginData = {};
+    this.notifyListeners('App', 'pause', emptyPause);
   }
 
   onDestroy(): void {
@@ -322,7 +329,8 @@ export class CapacitorBridge implements PluginHost {
       // Remember it so `App.getLaunchUrl()` can report it later.
       this.launchUrl = url;
     }
-    this.notifyListeners('App', 'appUrlOpen', { url: url, sourceApplication: want?.bundleName ?? '' } as Object);
+    const opened: PluginData = { url: url, sourceApplication: want?.bundleName ?? '' };
+    this.notifyListeners('App', 'appUrlOpen', opened);
   }
 
   getLaunchUrl(): string {
@@ -345,7 +353,8 @@ export class CapacitorBridge implements PluginHost {
     if (!app.hasListeners('backButton')) {
       return false;
     }
-    app.notifyListeners('backButton', { canGoBack: this.controller.accessBackward() } as Object);
+    const back: PluginData = { canGoBack: this.controller.accessBackward() };
+    app.notifyListeners('backButton', back);
     return true;
   }
 }
