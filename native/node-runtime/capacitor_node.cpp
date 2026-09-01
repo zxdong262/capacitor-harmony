@@ -13,9 +13,9 @@
 //   * Node.js v24.2.0 headers  (node.h, v8.h, libplatform.h, uv.h, ...)
 //   * libnode.so for the target ABI in entry/libs/<abi>/
 //
-// The exact Node embedder surface changes between majors; if it does not
-// compile verbatim, compare against `node/sample/embedtest.cc` of the matching
-// Node version — the shape used here follows the Node 22+ API.
+// The exact Node embedder surface changes between majors; this file follows
+// the Node 24 embedder API (CommonEnvironmentSetup + LoadEnvironment). The
+// canonical reference is `test/embedding/embedtest.cc` in the Node tree.
 
 #include <napi/native_api.h>
 
@@ -24,6 +24,7 @@
 #include <functional>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -40,10 +41,7 @@ static std::thread g_node_thread;
 static bool g_running = false;
 static int g_exit_code = 0;
 
-static node::MultiIsolatePlatform* g_platform = nullptr;
-static node::Isolate* g_isolate = nullptr;
 static node::Environment* g_env = nullptr;
-static uv_loop_t* g_loop = nullptr;
 
 // Threadsafe functions that push data to ArkTS.
 static napi_threadsafe_function g_output_tsfn = nullptr;
@@ -71,8 +69,10 @@ static void EmitOutput(const std::string& level, const std::string& line) {
   }
 }
 
-// JS run inside the new Environment: expose the host bridge on globalThis and
-// rewire process.stdout / process.stderr so each chunk is forwarded to ArkTS.
+// JS run inside the new Environment: rewire process.stdout / process.stderr so
+// each chunk is forwarded to ArkTS, then load the user entry (process.argv[1]).
+// globalThis.__capHost is installed from C++ (see InstallHostBridge) — it is a
+// plain JS object whose `write(level, line)` forwards to ArkTS.
 static const char kBootstrap[] = R"js(
 (function () {
   const host = globalThis.__capHost;
@@ -88,6 +88,7 @@ static const char kBootstrap[] = R"js(
   }
   rewire('stdout');
   rewire('stderr');
+  require(process.argv[1]);
 })();
 )js";
 
@@ -95,7 +96,35 @@ static const char kBootstrap[] = R"js(
 // Node thread
 // ----------------------------------------------------------------------------
 
-static napi_value HostWrite(napi_env env, napi_callback_info info);
+static void InstallHostBridge(v8::Isolate* isolate, v8::Local<v8::Context> context) {
+  v8::HandleScope scope(isolate);
+  v8::Context::Scope context_scope(context);
+
+  // host.write(level, line) -> EmitOutput(...) on the Node thread.
+  v8::Local<v8::Function> write_fn = v8::Function::New(
+      context,
+      [](const v8::FunctionCallbackInfo<v8::Value>& info) {
+        v8::Isolate* iso = info.GetIsolate();
+        if (info.Length() < 2) {
+          return;
+        }
+        v8::String::Utf8Value level(iso, info[0]);
+        v8::String::Utf8Value line(iso, info[1]);
+        EmitOutput(std::string(*level, level.length()),
+                   std::string(*line, line.length()));
+      })
+      .ToLocalChecked();
+
+  v8::Local<v8::Object> host = v8::Object::New(isolate);
+  host->Set(context, v8::String::NewFromUtf8(isolate, "write").ToLocalChecked(),
+            write_fn)
+      .FromMaybe(false);
+
+  context->Global()
+      ->Set(context, v8::String::NewFromUtf8(isolate, "__capHost").ToLocalChecked(),
+            host)
+      .FromMaybe(false);
+}
 
 static void NodeThreadMain(std::string entry_path, std::string data_dir) {
   {
@@ -107,118 +136,75 @@ static void NodeThreadMain(std::string entry_path, std::string data_dir) {
   }
 
   std::vector<std::string> args = {"node", entry_path};
-  std::vector<std::string> exec_args;
-  std::vector<std::string> errors;
 
-  int rc = node::InitializeOncePerProcess(args, exec_args, errors);
-  if (rc != 0) {
-    EmitOutput("stderr", "InitializeOncePerProcess failed with code " + std::to_string(rc));
+  std::shared_ptr<node::InitializationResult> result =
+      node::InitializeOncePerProcess(args);
+  for (const std::string& err : result->errors()) {
+    EmitOutput("stderr", "InitializeOncePerProcess: " + err);
+  }
+  if (result->early_return()) {
     std::lock_guard<std::mutex> lock(g_state_mutex);
     g_running = false;
     return;
   }
 
-  g_platform = node::MultiIsolatePlatform::Create(4);
-  v8::V8::InitializePlatform(g_platform);
+  std::unique_ptr<node::MultiIsolatePlatform> platform =
+      node::MultiIsolatePlatform::Create(4);
+  v8::V8::InitializePlatform(platform.get());
   v8::V8::Initialize();
 
-  uv_loop_t loop;
-  if (uv_loop_init(&loop) != 0) {
-    EmitOutput("stderr", "uv_loop_init failed");
-    v8::V8::ShutdownPlatform();
-    node::TearDownOncePerProcess();
-    std::lock_guard<std::mutex> lock(g_state_mutex);
-    g_running = false;
-    return;
-  }
-  g_loop = &loop;
-
-  node::IsolateSettings isolate_settings;
-  g_isolate = node::CreateIsolate(
-      g_platform,
-      isolate_settings,
-      args,
-      exec_args,
-      node::EnvironmentFlags::kOwnsProcessState | node::EnvironmentFlags::kOwnsInspector,
-      nullptr);
-
-  if (g_isolate == nullptr) {
-    EmitOutput("stderr", "CreateIsolate failed");
-    uv_loop_close(&loop);
-    v8::V8::ShutdownPlatform();
-    node::TearDownOncePerProcess();
-    std::lock_guard<std::mutex> lock(g_state_mutex);
-    g_running = false;
-    g_loop = nullptr;
-    return;
+  // chdir into the data dir so relative requires / file IO work as expected.
+  if (!data_dir.empty()) {
+    uv_chdir(data_dir.c_str());
   }
 
-  g_env = node::CreateEnvironment(
-      g_isolate,
-      g_platform,
-      args,
-      exec_args,
-      node::EnvironmentFlags::kOwnsProcessState | node::EnvironmentFlags::kOwnsInspector);
-
-  if (g_env == nullptr) {
+  std::vector<std::string> errors;
+  std::unique_ptr<node::CommonEnvironmentSetup> setup =
+      node::CommonEnvironmentSetup::Create(platform.get(), &errors,
+                                           result->args(), result->exec_args());
+  if (!setup) {
+    for (const std::string& err : errors) {
+      EmitOutput("stderr", "CreateEnvironment: " + err);
+    }
     EmitOutput("stderr", "CreateEnvironment failed");
-    node::FreeIsolate(g_isolate);
-    uv_loop_close(&loop);
-    v8::V8::ShutdownPlatform();
+    v8::V8::Dispose();
+    v8::V8::DisposePlatform();
     node::TearDownOncePerProcess();
     std::lock_guard<std::mutex> lock(g_state_mutex);
     g_running = false;
-    g_isolate = nullptr;
-    g_loop = nullptr;
     return;
   }
 
-  // Load the entry file (it is argv[1]) and the stdout/stderr re-wiring.
-  node::LoadEnvironment(g_env, [entry_path](napi_env env) -> napi_value {
-    // Expose the host bridge so the bootstrap can reach it.
-    napi_value global;
-    napi_value host_obj;
-    napi_value write_fn;
-    if (napi_get_global(env, &global) == napi_ok &&
-        napi_create_object(env, &host_obj) == napi_ok &&
-        napi_create_function(env, "write", NAPI_AUTO_LENGTH, HostWrite, nullptr, &write_fn) == napi_ok) {
-      napi_set_named_property(env, host_obj, "write", write_fn);
-      napi_set_named_property(env, global, "__capHost", host_obj);
-    }
+  node::Environment* env = setup->env();
+  {
+    std::lock_guard<std::mutex> lock(g_state_mutex);
+    g_env = env;
+  }
 
-    // Run the bootstrap (rewires stdout/stderr).
-    napi_value bootstrap;
-    napi_value bootstrap_result;
-    if (napi_create_string_utf8(env, kBootstrap, NAPI_AUTO_LENGTH, &bootstrap) == napi_ok) {
-      napi_run_script(env, bootstrap, &bootstrap_result);
-    }
+  // Install the host bridge (globalThis.__capHost) before running JS.
+  InstallHostBridge(setup->isolate(), setup->context());
 
-    // Load and execute the user's entry file.
-    napi_value main;
-    napi_value main_result;
-    if (napi_create_string_utf8(env, "require(process.argv[1]);", NAPI_AUTO_LENGTH, &main) == napi_ok) {
-      napi_run_script(env, main, &main_result);
-    }
-    return main_result;
-  });
+  // Load + run the bootstrap (rewires stdout/stderr, requires the entry file).
+  v8::MaybeLocal<v8::Value> loadenv_ret =
+      node::LoadEnvironment(env, std::string_view(kBootstrap));
+  if (loadenv_ret.IsEmpty()) {
+    EmitOutput("stderr", "LoadEnvironment threw during startup");
+  }
 
   // Block on the libuv loop until the entry exits or stop() is called.
-  g_exit_code = node::SpinEventLoop(g_env);
+  g_exit_code = node::SpinEventLoop(env).FromMaybe(1);
 
   // Teardown.
-  node::Stop(g_env);
-  node::FreeEnvironment(g_env);
-  node::FreeIsolate(g_isolate);
-  uv_loop_close(&loop);
-  v8::V8::ShutdownPlatform();
+  node::Stop(env);
+  setup.reset();  // frees the Environment / Isolate
+  v8::V8::Dispose();
+  v8::V8::DisposePlatform();
   node::TearDownOncePerProcess();
 
   {
     std::lock_guard<std::mutex> lock(g_state_mutex);
     g_running = false;
-    g_isolate = nullptr;
     g_env = nullptr;
-    g_loop = nullptr;
   }
 
   // Inform ArkTS the process ended.
@@ -231,27 +217,6 @@ static void NodeThreadMain(std::string entry_path, std::string data_dir) {
 // ----------------------------------------------------------------------------
 // NAPI plumbing
 // ----------------------------------------------------------------------------
-
-static napi_value HostWrite(napi_env env, napi_callback_info info) {
-  size_t argc = 2;
-  napi_value argv[2];
-  napi_get_cb_info(env, info, &argc, argv, nullptr, nullptr);
-  if (argc < 2) {
-    return nullptr;
-  }
-  size_t level_len = 0;
-  napi_get_value_string_utf8(env, argv[0], nullptr, 0, &level_len);
-  std::string level(level_len, '\0');
-  napi_get_value_string_utf8(env, argv[0], &level[0], level_len + 1, &level_len);
-
-  size_t line_len = 0;
-  napi_get_value_string_utf8(env, argv[1], nullptr, 0, &line_len);
-  std::string line(line_len, '\0');
-  napi_get_value_string_utf8(env, argv[1], &line[0], line_len + 1, &line_len);
-
-  EmitOutput(level, line);
-  return nullptr;
-}
 
 // Proxy: called on the ArkTS thread when a thread calls g_output_tsfn.
 static void OutputTsfnCall(napi_env env, napi_value js_cb, void* context, void* data) {
@@ -309,11 +274,6 @@ static napi_value NapiStart(napi_env env, napi_callback_info info) {
     }
   }
 
-  // chdir into the data dir so relative requires / file IO work as expected.
-  if (!data_dir.empty()) {
-    uv_chdir(data_dir.c_str());
-  }
-
   std::thread t(NodeThreadMain, entry, data_dir);
   {
     std::lock_guard<std::mutex> lock(g_state_mutex);
@@ -333,9 +293,6 @@ static napi_value NapiStop(napi_env env, napi_callback_info info) {
   }
   if (g_env != nullptr) {
     node::Stop(g_env);
-  }
-  if (g_loop != nullptr) {
-    uv_stop(g_loop);
   }
   return nullptr;
 }
