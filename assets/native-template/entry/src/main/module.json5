@@ -58,9 +58,6 @@
           "abilities": ["EntryAbility"],
           "when": "inuse"
         }
-      },
-      {
-        "name": "ohos.permission.WRITE_PASTEBOARD"
       }
     ]
   }
