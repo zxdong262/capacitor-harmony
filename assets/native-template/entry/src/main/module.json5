@@ -44,10 +44,20 @@
         "name": "ohos.permission.VIBRATE"
       },
       {
-        "name": "ohos.permission.LOCATION"
+        "name": "ohos.permission.LOCATION",
+        "reason": "$string:reason",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
       },
       {
-        "name": "ohos.permission.READ_PASTEBOARD"
+        "name": "ohos.permission.READ_PASTEBOARD",
+        "reason": "$string:reason",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
       },
       {
         "name": "ohos.permission.WRITE_PASTEBOARD"
