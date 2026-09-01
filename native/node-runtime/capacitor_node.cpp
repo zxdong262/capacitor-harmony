@@ -17,6 +17,18 @@
 // the Node 24 embedder API (CommonEnvironmentSetup + LoadEnvironment). The
 // canonical reference is `test/embedding/embedtest.cc` in the Node tree.
 
+// Suppress Node's bundled NAPI shim BEFORE any include. The OHOS header
+// <napi/native_api.h> transitively pulls in Node's node_api.h /
+// js_native_api.h, whose napi_* function declarations conflict with OHOS's
+// (different `env` type: node_api_basic_env vs OHOS napi_env). We only embed
+// Node's V8 + platform API and use OHOS NAPI for the addon, so skip Node's
+// NAPI declarations entirely. Forward-declare the two NAPI types node.h
+// references (in AddLinkedBinding overloads we never call) so it still parses.
+#define SRC_NODE_API_H_
+#define SRC_JS_NATIVE_API_H_
+typedef struct napi_module napi_module;
+typedef void* napi_addon_register_func;
+
 #include <napi/native_api.h>
 
 #include <cstdlib>
@@ -30,23 +42,7 @@
 
 #include <libplatform/libplatform.h>
 
-// Node's bundled NAPI headers (node_api.h -> js_native_api.h) declare the same
-// napi_* symbols as the OHOS NAPI headers we use for the addon, but with a
-// different `env` type (`node_api_basic_env` vs OHOS `napi_env`), which makes
-// the two sets conflict ("conflicting types for napi_get_instance_data", ...).
-// We only embed Node's V8 + platform API (we use v8 directly for the host
-// bridge, and OHOS NAPI for the addon), so suppress Node's NAPI declarations
-// by pre-defining their include guards. node.h itself only references
-// `napi_module` / `napi_addon_register_func` from that set (in AddLinkedBinding
-// overloads we never call), so forward-declare just those two to let the
-// header parse.
-#define SRC_NODE_API_H_
-#define SRC_JS_NATIVE_API_H_
-typedef struct napi_module napi_module;
-typedef void* napi_addon_register_func;
 #include <node.h>
-#undef SRC_NODE_API_H_
-#undef SRC_JS_NATIVE_API_H_
 
 #include <uv.h>
 
