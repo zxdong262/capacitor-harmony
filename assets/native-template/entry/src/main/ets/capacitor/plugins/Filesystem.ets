@@ -137,7 +137,7 @@ export class FilesystemPlugin extends CapacitorPlugin {
         call.reject(`${path} is not a directory`);
         return;
       }
-      fs.rmdirSync(path, recursive);
+      fs.rmdirSync(path);
       call.resolve();
     } catch (e) {
       call.reject(`rmdir failed: ${String(e)}`);

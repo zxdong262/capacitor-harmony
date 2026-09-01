@@ -21,7 +21,7 @@ export class ClipboardPlugin extends CapacitorPlugin {
       return;
     }
     try {
-      const board: pasteboard.Pasteboard = pasteboard.getSystemPasteboard();
+      const board = pasteboard.getSystemPasteboard();
       const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, value);
       board
         .setData(data)
@@ -38,7 +38,7 @@ export class ClipboardPlugin extends CapacitorPlugin {
 
   read(call: PluginCall): void {
     try {
-      const board: pasteboard.Pasteboard = pasteboard.getSystemPasteboard();
+      const board = pasteboard.getSystemPasteboard();
       board
         .getData()
         .then((data: pasteboard.PasteData) => {

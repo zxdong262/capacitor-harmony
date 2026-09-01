@@ -1,4 +1,5 @@
 import { common } from '@kit.AbilityKit';
+import { NodeRuntime } from './NodeRuntime';
 
 /**
  * Shared types for the capacitor-harmony bridge.
@@ -65,6 +66,10 @@ export interface HarmonyBridgeProxy {
  */
 export interface PluginHost {
   getContext(): common.UIAbilityContext;
+  /** The embedded Node.js runtime wrapper, exposed to the Node plugin. */
+  getNodeRuntime(): NodeRuntime;
+  /** Register a plugin instance built by `PluginRegistry`. */
+  registerPlugin(plugin: Object): void;
   /**
    * Hand a result back to `window.Capacitor.fromNative()`.
    *

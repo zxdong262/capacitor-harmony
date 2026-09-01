@@ -1,3 +1,4 @@
+import { common } from '@kit.AbilityKit';
 import { CapacitorBridge } from './CapacitorBridge';
 
 /**
@@ -7,4 +8,6 @@ import { CapacitorBridge } from './CapacitorBridge';
  */
 export class BridgeHolder {
   static bridge: CapacitorBridge | null = null;
+  /** UIAbilityContext, stashed by `EntryAbility.onCreate` for the page. */
+  static context: common.UIAbilityContext | null = null;
 }

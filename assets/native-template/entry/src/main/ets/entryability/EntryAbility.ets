@@ -10,11 +10,12 @@ const DOMAIN: number = 0x0000;
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
-    hilog.info(DOMAIN, TAG, '%{public}s onCreate', this.context.abilityName);
+    BridgeHolder.context = this.context;
+    hilog.info(DOMAIN, TAG, '%{public}s onCreate', 'EntryAbility');
   }
 
   onDestroy(): void {
-    hilog.info(DOMAIN, TAG, '%{public}s onDestroy', this.context.abilityName);
+    hilog.info(DOMAIN, TAG, '%{public}s onDestroy', 'EntryAbility');
     BridgeHolder.bridge?.onDestroy();
   }
 

@@ -1,4 +1,5 @@
 import { webview } from '@kit.ArkWeb';
+import { common } from '@kit.AbilityKit';
 import { BridgeHolder } from '../capacitor/bridgeInstance';
 import { CapacitorBridge } from '../capacitor/CapacitorBridge';
 
@@ -10,7 +11,8 @@ struct Index {
   @State serverUrl: string = 'http://localhost/';
 
   aboutToAppear(): void {
-    this.bridge = new CapacitorBridge(this.context, this.controller);
+    const ctx: common.UIAbilityContext = BridgeHolder.context!;
+    this.bridge = new CapacitorBridge(ctx, this.controller);
     BridgeHolder.bridge = this.bridge;
     this.bridge.init();
     this.serverUrl = this.bridge.getServerUrl();
