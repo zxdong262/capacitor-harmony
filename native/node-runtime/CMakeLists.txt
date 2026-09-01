@@ -53,6 +53,7 @@ target_link_libraries(capacitor_node
 )
 
 target_compile_options(capacitor_node PUBLIC
+  -std=c++17
   -fexceptions
   -frtti
   -fno-emulated-tls
