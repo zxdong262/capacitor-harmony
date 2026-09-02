@@ -1,6 +1,6 @@
 {
   "name": "capacitor-harmony",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "HarmonyOS / OpenHarmony platform adapter for Capacitor — ArkWeb WebView plus an embedded Node.js runtime (ohos-node-shared)",
   "license": "MIT",
   "author": {
