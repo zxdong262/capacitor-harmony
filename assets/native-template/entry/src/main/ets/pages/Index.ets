@@ -19,11 +19,10 @@ struct Index {
   }
 
   onBackPress(): boolean {
-    if (this.bridge && this.bridge.onBackPressed()) {
-      // A JS `backButton` listener consumed the gesture.
-      return true;
-    }
-    return false;
+    // The browser chrome (address bar, history) now lives in the web layer
+    // (React). Delegate the hardware back button to its in-app history.
+    this.controller.runJavaScript('window.__browserBack ? window.__browserBack() : false');
+    return true;
   }
 
   build() {
