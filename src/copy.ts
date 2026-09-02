@@ -1,4 +1,4 @@
-import { copy as fsCopy, emptyDir, ensureDir, pathExists } from 'fs-extra';
+import { copy as fsCopy, emptyDir, ensureDir, pathExists, readdir, stat, writeFile } from 'fs-extra';
 import { join } from 'path';
 import type { HookEnv } from './env';
 import { NODE_DIR, WWW_DIR, platformPath, writeRuntimeConfig } from './configure';
@@ -47,12 +47,47 @@ export async function copyWebAssets(env: HookEnv): Promise<void> {
       } else {
         warn(`node backend copied but entry "${harmony.nodeEntry || 'main.js'}" is missing — Node will not start`);
       }
+      // Emit the manifest the runtime reads to unpack the bundle into the
+      // app's writable filesDir at launch. Without it, extractNodeBundle()
+      // finds nothing and the Node backend never starts (nothing listens on
+      // the port, so any API call fails to connect).
+      await writeNodeFileList(nodeDest);
     } else {
       warn(`no node backend at ${nodeSrc} — set \`harmony.nodeDir\` or create the directory`);
     }
   }
 
   await writeRuntimeConfig(env);
+}
+
+/**
+ * Write `rawfile/node/.file-list.json`: the list of (relative) files the
+ * runtime copies from rawfile into the app's writable filesDir so the embedded
+ * Node.js runtime can `require()` / read them. Skips dotfiles (incl. this
+ * manifest itself) so it isn't re-extracted.
+ */
+async function writeNodeFileList(nodeDest: string): Promise<void> {
+  const files: string[] = [];
+  const walk = async (sub: string): Promise<void> => {
+    const abs = sub.length ? join(nodeDest, sub) : nodeDest;
+    const entries = await readdir(abs);
+    for (const name of entries.sort()) {
+      if (name.startsWith('.')) {
+        continue;
+      }
+      const rel = sub.length ? `${sub}/${name}` : name;
+      const st = await stat(join(nodeDest, rel));
+      if (st.isDirectory()) {
+        await walk(rel);
+      } else {
+        files.push(rel);
+      }
+    }
+  };
+  await walk('');
+  const listPath = join(nodeDest, '.file-list.json');
+  await writeFile(listPath, `${JSON.stringify(files, null, 2)}\n`);
+  log(`node file list → harmony/${NODE_DIR}/.file-list.json (${files.length} file(s))`);
 }
 
 /** Alias used by `cap sync harmony` (which runs copy then update). */
