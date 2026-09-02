@@ -80,6 +80,7 @@ export class NodePlugin extends CapacitorPlugin {
       running: this.node.isRunning(),
       error: this.node.getLastError(),
       log: this.node.readLog(),
+      extract: this.node.getExtractInfo(),
     };
     call.resolve(status);
   }

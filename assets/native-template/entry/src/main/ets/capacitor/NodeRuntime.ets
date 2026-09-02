@@ -3,6 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { util } from '@kit.ArkTS';
 import fs from '@ohos.file.fs';
 import { start, stop, isRunning, setOutputListener, setExitListener } from 'libcapacitor_node.so';
+import { ExtractReport } from './BridgeInterfaces';
 
 const TAG: string = 'NodeRuntime';
 const DOMAIN: number = 0x0000;
@@ -10,6 +11,8 @@ const DOMAIN: number = 0x0000;
 const BOOT_LOG: string = 'node-boot.log';
 /** How much of the boot log to hand back to JS (it is shown in a <pre>). */
 const LOG_TAIL: number = 8192;
+/** How many native output lines to keep in memory as boot-log fallback. */
+const RECENT_LINES_MAX: number = 100;
 
 /** A line of output produced by the embedded Node.js process. */
 export type NodeOutputHandler = (level: string, line: string) => void;
@@ -39,6 +42,15 @@ export class NodeRuntime {
   private outputHandlers: NodeOutputHandler[] = [];
   private exitHandlers: NodeExitHandler[] = [];
   private wired: boolean = false;
+  /** Summary of the rawfile→filesDir unpack, shown in the app UI. */
+  private extractInfo: string = '';
+  /**
+   * Last native output lines, kept in memory. The native side forwards every
+   * line through out_cb even when it cannot create its boot log file (e.g.
+   * the data dir was never unpacked) — this buffer is the only place those
+   * lines survive, so `readLog()` falls back to it.
+   */
+  private recentLines: string[] = [];
 
   constructor(context: common.UIAbilityContext) {
     this.context = context;
@@ -89,28 +101,60 @@ export class NodeRuntime {
    * `libcapacitor_node.so` mirrors everything it does (and every fatal signal
    * it takes) into `<node dir>/node-boot.log`. Reading it here is what lets a
    * stuck backend be diagnosed from the device UI instead of `hdc hilog`.
+   *
+   * When the file is missing/unreadable (classically: the unpack step never
+   * created the dir), fall back to the in-memory copy of the native output
+   * stream — the early lines ("args entry=[…] dir=[…]", "cannot open boot
+   * log", "entry file missing: …") pinpoint the failure just as well.
    */
   readLog(): string {
     const path: string = this.getLogPath();
-    if (path.length === 0) {
-      return '';
-    }
-    try {
-      const stat: fs.Stat = fs.statSync(path);
-      const size: number = stat.size;
-      if (size <= 0) {
-        return '';
+    let fileLog: string = '';
+    let fileError: string = '';
+    if (path.length > 0) {
+      try {
+        const stat: fs.Stat = fs.statSync(path);
+        const size: number = stat.size;
+        if (size > 0) {
+          const file: fs.File = fs.openSync(path, fs.OpenMode.READ_ONLY);
+          const buf: ArrayBuffer = new ArrayBuffer(size);
+          fs.readSync(file.fd, buf);
+          fs.closeSync(file);
+          const decoder: util.TextDecoder = new util.TextDecoder('utf-8');
+          const text: string = decoder.decodeToString(new Uint8Array(buf));
+          fileLog = text.length > LOG_TAIL ? text.substring(text.length - LOG_TAIL) : text;
+        }
+      } catch (e) {
+        fileError = `boot log unreadable (${path}): ${String(e)}`;
       }
-      const file: fs.File = fs.openSync(path, fs.OpenMode.READ_ONLY);
-      const buf: ArrayBuffer = new ArrayBuffer(size);
-      fs.readSync(file.fd, buf);
-      fs.closeSync(file);
-      const decoder: util.TextDecoder = new util.TextDecoder('utf-8');
-      const text: string = decoder.decodeToString(new Uint8Array(buf));
-      return text.length > LOG_TAIL ? text.substring(text.length - LOG_TAIL) : text;
-    } catch (e) {
-      return `boot log unreadable (${path}): ${String(e)}`;
     }
+    const parts: string[] = [];
+    if (fileLog.length > 0) {
+      parts.push(fileLog);
+    }
+    if (fileError.length > 0) {
+      parts.push(fileError);
+    }
+    if (this.recentLines.length > 0) {
+      parts.push('[native output]\n' + this.recentLines.join('\n'));
+    }
+    return parts.join('\n');
+  }
+
+  /** Record the unpack report so the app UI can show it (`Node.getStatus`). */
+  setExtractReport(report: ExtractReport): void {
+    this.extractInfo =
+      `copied=${report.copied} skipped=${report.skipped} failed=${report.failed}` +
+      (report.error.length > 0 ? ` — ${report.error}` : '');
+  }
+
+  /** Record a fatal unpack failure (exception escaped extractNodeBundle). */
+  setExtractError(message: string): void {
+    this.extractInfo = message;
+  }
+
+  getExtractInfo(): string {
+    return this.extractInfo;
   }
 
   onOutput(handler: NodeOutputHandler): void {
@@ -154,6 +198,10 @@ export class NodeRuntime {
       hilog.error(DOMAIN, TAG, '%{public}s', line);
     } else {
       hilog.info(DOMAIN, TAG, '%{public}s', line);
+    }
+    this.recentLines.push(line);
+    if (this.recentLines.length > RECENT_LINES_MAX) {
+      this.recentLines.splice(0, this.recentLines.length - RECENT_LINES_MAX);
     }
     this.outputHandlers.forEach((handler: NodeOutputHandler) => {
       handler(level, line);

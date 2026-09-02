@@ -301,6 +301,24 @@ static void InstallCrashMarkers() {
   }
 }
 
+// --------------------------------------------------------- mkdir -p ---------
+// Best-effort recursive mkdir. The ArkTS unpacker normally creates the data
+// dir, but when it silently no-ops (empty file list, dropped manifest, …) the
+// boot log open below would fail too — leaving zero on-device evidence. With
+// this, the boot log exists as long as the node thread runs at all.
+static void Mkdirs(const std::string& path) {
+  for (size_t i = 1; i <= path.size(); i++) {
+    if (i == path.size() || path[i] == '/') {
+      std::string prefix = path.substr(0, i);
+      if (prefix.size() > 1 || (prefix.size() == 1 && prefix[0] != '/')) {
+        if (mkdir(prefix.c_str(), 0755) != 0 && errno != EEXIST) {
+          // keep going — the boot log open reports the final failure
+        }
+      }
+    }
+  }
+}
+
 // --------------------------------------------------------- fd repair --------
 // Guarantee fds 0/1/2 are open; libuv's uv__close asserts fd > STDERR_FILENO,
 // so a closed std fd that gets reused through a dup2/close chain aborts.
@@ -377,8 +395,28 @@ static void* NodeThreadMain(void* arg) {
   g_node_tid = (pid_t)syscall(__NR_gettid);
   LogLine("log", "node_embed: starting embedded Node");
 
+  // Echo the arguments exactly as received: a NAPI string-marshaling bug
+  // otherwise looks identical to an unpack failure (empty paths -> no boot
+  // log, entry stat fails, exit code 1 — with no clue anywhere).
+  {
+    std::string msg = "node_embed: args entry=[" + entry_path + "] dir=[" +
+                      data_dir + "]";
+    LogLine("log", msg.c_str());
+  }
+
+  // Defensive fallback: derive the data dir from the entry path when the
+  // second argument arrived empty.
+  if (data_dir.empty() && !entry_path.empty()) {
+    size_t slash = entry_path.find_last_of('/');
+    if (slash != std::string::npos && slash > 0) {
+      data_dir = entry_path.substr(0, slash);
+      LogLine("log", "node_embed: data dir derived from entry path");
+    }
+  }
+
   // boot log (same file electerm-harmony writes, for on-device debugging)
   if (!data_dir.empty()) {
+    Mkdirs(data_dir);  // the ArkTS unpacker may never have run
     std::string logPath = data_dir + "/node-boot.log";
     int fd = open(logPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (fd >= 0) {
@@ -505,9 +543,18 @@ void node_embed_run(const char* entry_path, const char* data_dir,
     delete na;
     std::lock_guard<std::mutex> lock(g_state_mutex);
     g_running = false;
+    // Surface the failure through out_cb BEFORE clearing it: pthread_create
+    // failing (e.g. rc=1) is otherwise indistinguishable from an unpack
+    // failure on-device — exit code with no boot log and no output.
+    cap_output_cb ocb = g_out_cb;
     g_out_cb = nullptr;
     cap_exit_cb cb = g_exit_cb;
     g_exit_cb = nullptr;
+    if (ocb != nullptr) {
+      std::string msg =
+          "node_embed: pthread_create failed rc=" + std::to_string(prc);
+      ocb("error", msg.c_str());
+    }
     if (cb) cb(prc);
     return;
   }

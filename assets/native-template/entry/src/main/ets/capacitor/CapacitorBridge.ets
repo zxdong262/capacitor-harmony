@@ -81,7 +81,11 @@ export class CapacitorBridge implements PluginHost {
 
     if (this.config.node.enable) {
       const nodeDir: string = `${this.context.filesDir}/node`;
-      extractNodeBundle(this.context, nodeDir, this.config.node.files);
+      try {
+        this.node.setExtractReport(extractNodeBundle(this.context, nodeDir, this.config.node.files));
+      } catch (e) {
+        this.node.setExtractError(`extractNodeBundle crashed: ${String(e)}`);
+      }
       this.node.configure(nodeDir, this.config.node.entry);
       if (this.config.node.autostart) {
         this.node.start();

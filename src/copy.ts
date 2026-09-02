@@ -61,10 +61,15 @@ export async function copyWebAssets(env: HookEnv): Promise<void> {
 }
 
 /**
- * Write `rawfile/node/.file-list.json`: the list of (relative) files the
+ * Write `rawfile/node/file-list.json`: the list of (relative) files the
  * runtime copies from rawfile into the app's writable filesDir so the embedded
- * Node.js runtime can `require()` / read them. Skips dotfiles (incl. this
- * manifest itself) so it isn't re-extracted.
+ * Node.js runtime can `require()` / read them. Skips dotfiles so it isn't
+ * re-extracted.
+ *
+ * NOTE: the manifest must NOT be a dotfile — hvigor's rawfile packaging
+ * silently drops dotfiles (verified: `.file-list.json` never reached the HAP
+ * in any CI build), which made the runtime's fallback extraction path dead
+ * code on device.
  */
 async function writeNodeFileList(nodeDest: string): Promise<void> {
   const files: string[] = [];
@@ -85,9 +90,9 @@ async function writeNodeFileList(nodeDest: string): Promise<void> {
     }
   };
   await walk('');
-  const listPath = join(nodeDest, '.file-list.json');
+  const listPath = join(nodeDest, 'file-list.json');
   await writeFile(listPath, `${JSON.stringify(files, null, 2)}\n`);
-  log(`node file list → harmony/${NODE_DIR}/.file-list.json (${files.length} file(s))`);
+  log(`node file list → harmony/${NODE_DIR}/file-list.json (${files.length} file(s))`);
 }
 
 /** Alias used by `cap sync harmony` (which runs copy then update). */

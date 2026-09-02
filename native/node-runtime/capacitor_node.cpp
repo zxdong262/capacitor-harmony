@@ -20,6 +20,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include "node_bridge.h"
 
@@ -104,6 +105,22 @@ static void ExitTsfnCall(napi_env env, napi_value js_cb, void* context,
 // Public NAPI exports
 // ----------------------------------------------------------------------------
 
+/** Read a JS string argument without the classic len+1 overflow. */
+static bool ReadStringArg(napi_env env, napi_value value, std::string& out) {
+  size_t len = 0;
+  if (napi_get_value_string_utf8(env, value, nullptr, 0, &len) != napi_ok) {
+    return false;
+  }
+  std::vector<char> buf(len + 1, '\0');
+  size_t copied = 0;
+  if (napi_get_value_string_utf8(env, value, buf.data(), buf.size(), &copied) !=
+      napi_ok) {
+    return false;
+  }
+  out.assign(buf.data(), copied);
+  return true;
+}
+
 static napi_value NapiStart(napi_env env, napi_callback_info info) {
   if (node_embed_is_running()) {
     napi_value running;
@@ -120,14 +137,14 @@ static napi_value NapiStart(napi_env env, napi_callback_info info) {
     return nullptr;
   }
 
-  size_t len = 0;
-  napi_get_value_string_utf8(env, argv[0], nullptr, 0, &len);
-  std::string entry(len, '\0');
-  napi_get_value_string_utf8(env, argv[0], &entry[0], len + 1, &len);
-
-  napi_get_value_string_utf8(env, argv[1], nullptr, 0, &len);
-  std::string data_dir(len, '\0');
-  napi_get_value_string_utf8(env, argv[1], &data_dir[0], len + 1, &len);
+  std::string entry;
+  std::string data_dir;
+  if (!ReadStringArg(env, argv[0], entry) ||
+      !ReadStringArg(env, argv[1], data_dir)) {
+    napi_throw_error(env, nullptr,
+                     "start(entryPath, dataDir): arguments must be strings");
+    return nullptr;
+  }
 
   node_embed_run(entry.c_str(), data_dir.c_str(), CapEmitOutput, CapEmitExit);
 

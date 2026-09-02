@@ -264,11 +264,25 @@ export interface NodeRunningPayload {
  * `error` is the last failure reason (native start error, crash signal, …) and
  * `log` is the tail of the native boot log. Both exist so a runtime that never
  * comes up can be diagnosed on the device without `hdc hilog`.
+ *
+ * `extract` summarizes the rawfile→filesDir unpack of the Node bundle (which
+ * historically failed silently, leaving the runtime with no entry file and no
+ * writable dir for its boot log).
  */
 export interface NodeStatusPayload {
   running: boolean;
   error: string;
   log: string;
+  extract: string;
+}
+
+/** Result of unpacking `rawfile/node/**` into the app's writable filesDir. */
+export interface ExtractReport {
+  copied: number;
+  skipped: number;
+  failed: number;
+  /** First failure reason, empty when everything worked. */
+  error: string;
 }
 
 /** `Node.getLog` — the tail of the native boot log. */
