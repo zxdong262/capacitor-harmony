@@ -109,6 +109,8 @@ export interface NodeRuntimeOptions {
   /** Entry file inside `rawfile/node`. */
   entry: string;
   autostart: boolean;
+  /** Relative file paths under `rawfile/node` to unpack at launch. */
+  files?: string[];
 }
 
 export interface LoggingOptions {

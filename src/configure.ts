@@ -1,4 +1,4 @@
-import { copy, pathExists, readFile, readJson, remove, writeFile, ensureDir } from 'fs-extra';
+import { copy, pathExists, readFile, readJson, readdir, remove, stat, writeFile, ensureDir } from 'fs-extra';
 import { basename, join } from 'path';
 import type { HookEnv } from './env';
 import { log, replaceJson5ArrayField, replaceJson5StringField, setStringResource, warn } from './util';
@@ -53,6 +53,11 @@ export async function applyAppIdentity(env: HookEnv): Promise<void> {
 export async function writeRuntimeConfig(env: HookEnv): Promise<void> {
   const cfg = env.config;
   const harmony = cfg.harmony ?? {};
+  // List the Node backend files so the runtime can unpack them into the
+  // app's writable filesDir at launch. We embed this list directly in the
+  // config (which is always written by `cap sync harmony`) rather than a
+  // separate manifest file, so it can't get dropped by a partial sync.
+  const nodeFiles = harmony.nodeDir === false ? [] : await listNodeFiles(join(env.rootDir, harmony.nodeDir || 'node'));
   const runtimeConfig = {
     appId: cfg.appId ?? '',
     appName: cfg.appName ?? '',
@@ -63,6 +68,7 @@ export async function writeRuntimeConfig(env: HookEnv): Promise<void> {
       enable: harmony.nodeDir !== false,
       entry: harmony.nodeEntry || 'main.js',
       autostart: harmony.autostartNode !== false,
+      files: nodeFiles,
     },
     logging: {
       enabled: cfg.logging === true || (cfg as any).harmony?.logging === true,
@@ -71,6 +77,36 @@ export async function writeRuntimeConfig(env: HookEnv): Promise<void> {
   const file = platformPath(env, 'entry', 'src', 'main', 'resources', 'rawfile', 'capacitor.config.json');
   await writeFile(file, `${JSON.stringify(runtimeConfig, null, 2)}\n`);
   log('wrote rawfile/capacitor.config.json');
+}
+
+/**
+ * Walk a directory and return relative file paths (skipping dotfiles), so the
+ * runtime knows which files to unpack from rawfile into its writable dir.
+ */
+async function listNodeFiles(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  const walk = async (sub: string): Promise<void> => {
+    let entries: string[] = [];
+    try {
+      entries = await readdir(sub.length ? join(dir, sub) : dir);
+    } catch (e) {
+      return;
+    }
+    for (const name of entries.sort()) {
+      if (name.startsWith('.')) {
+        continue;
+      }
+      const rel = sub.length ? `${sub}/${name}` : name;
+      const st = await stat(join(dir, rel));
+      if (st.isDirectory()) {
+        await walk(rel);
+      } else {
+        out.push(rel);
+      }
+    }
+  };
+  await walk('');
+  return out;
 }
 
 /** Apply `harmony.deviceTypes` / `harmony.permissions` to `module.json5`. */

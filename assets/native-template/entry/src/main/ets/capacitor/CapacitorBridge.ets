@@ -81,7 +81,7 @@ export class CapacitorBridge implements PluginHost {
 
     if (this.config.node.enable) {
       const nodeDir: string = `${this.context.filesDir}/node`;
-      extractNodeBundle(this.context, nodeDir);
+      extractNodeBundle(this.context, nodeDir, this.config.node.files);
       this.node.configure(nodeDir, this.config.node.entry);
       if (this.config.node.autostart) {
         this.node.start();
