@@ -205,14 +205,24 @@ Node.ets (plugin) ──getInfo/start/stop──▶ NodeRuntime.ets
 - `NodeRuntime.ets` wraps `libcapacitor_node.so`. `configure(dir, entry)` sets
   the extracted `filesDir/node` and the entry file; `start()` spawns Node on its
   own thread.
-- `native/node-runtime/capacitor_node.cpp` is the NAPI module that:
-  - uses the documented Node 22+ embedder C++ API
-    (`node::InitializeOncePerProcess`, `MultiIsolatePlatform::Create`,
-    `node::CreateEnvironment`, `node::LoadEnvironment`, `node::SpinEventLoop`,
-    …) on a `std::thread`;
-  - rewires `process.stdout`/`stderr._write` to post lines back to ArkTS via a
-    `napi_threadsafe_function`;
-  - runs the app's entry file with `require(process.argv[1])`.
+- `native/node-runtime/capacitor_node.cpp` is the NAPI module; its sibling
+  `node_embed.cpp` launches the runtime:
+  - `dlopen()`s `libnode.so` from the app's installed lib dir (same directory
+    as the module itself — found via `dladdr`), then resolves `node::Start`
+    with `dlsym`. The library is **never linked at build time**: linking would
+    record `DT_NEEDED libnode.so.137` (the file's SONAME), which the OHOS
+    linker cannot resolve because the packaged file is named `libnode.so`;
+  - repairs stdio fds 0/1/2 (libuv asserts `fd > STDERR_FILENO`) and installs
+    a SIGSYS seccomp shim (the sandbox traps syscalls Node probes —
+    `membarrier`, `perf_event_open`, `io_uring_setup`, … — and the shim turns
+    the trap into `ENOSYS` so the probes no-op instead of killing the thread);
+  - runs `node::Start(argc, argv)` with `--jitless --no-verify-heap`
+    (`--jitless` is required by OpenHarmony's W^X policy: V8 must never map
+    `PROT_EXEC` pages);
+  - captures node's stdout/stderr through a pipe and forwards each line to
+    ArkTS via a `napi_threadsafe_function`, mirroring everything into
+    `<filesDir>/node/node-boot.log` for on-device debugging (`Node.getLog`);
+  - runs the app's entry file as `process.argv[1]`.
 - `libnode.so` is **not** committed. `scripts/prepare-node.sh` downloads it from
   the `ohos-node-shared` release, verifies the SHA-256, and **rejects PIE
   builds** (a true `--shared` `.so` is required; a PIE artifact would crash on
@@ -233,7 +243,7 @@ binary.
 |-------|-------|--------|
 | `npx cap sync harmony` | this npm package (Node ≥ 18) | `harmony/` native project + `rawfile` contents |
 | download `libnode.so` | `scripts/prepare-node.sh` | `entry/libs/<abi>/libnode.so` |
-| compile `libcapacitor_node.so` | HarmonyOS NDK / hvigor | native library linked into the HAP |
+| compile `libcapacitor_node.so` | HarmonyOS NDK / hvigor | native library linked into the HAP (does NOT link `libnode.so` — dlopen'd at runtime) |
 | build HAP | `hvigorw assembleHap` | installable `.hap` |
 | extract `rawfile/node/**` | app launch (`CapacitorConfig.ets`) | writable `filesDir/node` |
 | start Node | app launch (if `autostart: true`) | running Node process |

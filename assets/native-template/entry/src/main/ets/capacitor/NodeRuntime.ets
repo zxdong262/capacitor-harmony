@@ -1,9 +1,15 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { util } from '@kit.ArkTS';
+import fs from '@ohos.file.fs';
 import { start, stop, isRunning, setOutputListener, setExitListener } from 'libcapacitor_node.so';
 
 const TAG: string = 'NodeRuntime';
 const DOMAIN: number = 0x0000;
+/** Name of the log `libcapacitor_node.so` writes inside the node data dir. */
+const BOOT_LOG: string = 'node-boot.log';
+/** How much of the boot log to hand back to JS (it is shown in a <pre>). */
+const LOG_TAIL: number = 8192;
 
 /** A line of output produced by the embedded Node.js process. */
 export type NodeOutputHandler = (level: string, line: string) => void;
@@ -28,6 +34,8 @@ export class NodeRuntime {
   private entry: string = 'main.js';
   private running: boolean = false;
   private lastError: string = '';
+  /** Boot log snapshot taken the moment the runtime died. */
+  private lastLog: string = '';
   private outputHandlers: NodeOutputHandler[] = [];
   private exitHandlers: NodeExitHandler[] = [];
   private wired: boolean = false;
@@ -58,8 +66,51 @@ export class NodeRuntime {
     return this.lastError;
   }
 
+  /** Boot log snapshot captured when the runtime stopped. */
+  getLastLog(): string {
+    return this.lastLog;
+  }
+
   isRunning(): boolean {
     return this.running;
+  }
+
+  /** Absolute path of the native boot log, or '' before `configure()`. */
+  getLogPath(): string {
+    if (this.dir.length === 0) {
+      return '';
+    }
+    return `${this.dir}/${BOOT_LOG}`;
+  }
+
+  /**
+   * Read the tail of the native boot log.
+   *
+   * `libcapacitor_node.so` mirrors everything it does (and every fatal signal
+   * it takes) into `<node dir>/node-boot.log`. Reading it here is what lets a
+   * stuck backend be diagnosed from the device UI instead of `hdc hilog`.
+   */
+  readLog(): string {
+    const path: string = this.getLogPath();
+    if (path.length === 0) {
+      return '';
+    }
+    try {
+      const stat: fs.Stat = fs.statSync(path);
+      const size: number = stat.size;
+      if (size <= 0) {
+        return '';
+      }
+      const file: fs.File = fs.openSync(path, fs.OpenMode.READ_ONLY);
+      const buf: ArrayBuffer = new ArrayBuffer(size);
+      fs.readSync(file.fd, buf);
+      fs.closeSync(file);
+      const decoder: util.TextDecoder = new util.TextDecoder('utf-8');
+      const text: string = decoder.decodeToString(new Uint8Array(buf));
+      return text.length > LOG_TAIL ? text.substring(text.length - LOG_TAIL) : text;
+    } catch (e) {
+      return `boot log unreadable (${path}): ${String(e)}`;
+    }
   }
 
   onOutput(handler: NodeOutputHandler): void {
@@ -82,6 +133,12 @@ export class NodeRuntime {
       });
       setExitListener((code: number): void => {
         this.running = false;
+        // Snapshot the boot log right now: a crash signal is only recorded
+        // there, and the file is truncated on the next start attempt.
+        this.lastLog = this.readLog();
+        if (this.lastError.length === 0) {
+          this.lastError = `node exited with code ${code}`;
+        }
         hilog.info(DOMAIN, TAG, 'node exited with code %{public}d', code);
         this.exitHandlers.forEach((handler: NodeExitHandler) => {
           handler(code);
@@ -118,7 +175,19 @@ export class NodeRuntime {
       return false;
     }
     this.wire();
+    // Cheap probe: when libcapacitor_node.so (or the libnode.so it needs)
+    // cannot be loaded, the imported symbols are undefined and this throws —
+    // which is far easier to read than a silent "stopped" in the UI.
     try {
+      const probe: boolean = isRunning();
+      hilog.info(DOMAIN, TAG, 'native probe ok (running=%{public}d)', probe ? 1 : 0);
+    } catch (e) {
+      this.lastError = `libcapacitor_node.so unusable: ${String(e)}`;
+      hilog.error(DOMAIN, TAG, '%{public}s', this.lastError);
+      return false;
+    }
+    try {
+      this.lastError = '';
       const ok: boolean = start(this.getEntryPath(), this.dir);
       this.running = ok;
       if (!ok) {
@@ -127,7 +196,10 @@ export class NodeRuntime {
       }
       return ok;
     } catch (e) {
-      this.lastError = String(e);
+      // A broken/missing libcapacitor_node.so surfaces here as a TypeError on
+      // the imported symbol — surface it verbatim, do not swallow it.
+      this.lastError = `native start() failed: ${String(e)}`;
+      this.lastLog = this.readLog();
       hilog.error(DOMAIN, TAG, 'start failed: %{public}s', this.lastError);
       return false;
     }

@@ -13,20 +13,30 @@ export const Node = Capacitor.registerPlugin<NodePlugin>('Node', {
   web: async () => new (await import('./web')).NodeWeb(),
 });
 
-export function startNode(): Promise<{ running: boolean }> {
+export function startNode(): Promise<{ running: boolean; error: string }> {
   return Node.start();
 }
 
-export function stopNode(): Promise<{ running: boolean }> {
+export function stopNode(): Promise<{ running: boolean; error: string }> {
   return Node.stop();
 }
 
-export function getNodeStatus(): Promise<{ running: boolean }> {
+export function getNodeStatus(): Promise<{ running: boolean; error: string; log: string }> {
   return Node.getStatus();
 }
 
 export function getNodeInfo(): Promise<{ entry: string; entryPath: string; dir: string }> {
   return Node.getInfo();
+}
+
+/**
+ * Tail of the native boot log.
+ *
+ * `libcapacitor_node.so` writes every boot step and every fatal signal here,
+ * so this is the first thing to look at when the backend never comes up.
+ */
+export function getNodeLog(): Promise<{ log: string }> {
+  return Node.getLog();
 }
 
 /** Stream of the Node process's stdout. */

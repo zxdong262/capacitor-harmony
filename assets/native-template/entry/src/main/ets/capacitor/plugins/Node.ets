@@ -3,7 +3,15 @@ import { http } from '@kit.NetworkKit';
 import { PluginHost } from '../BridgeInterfaces';
 import { CapacitorPlugin } from '../CapacitorPlugin';
 import { PluginCall } from '../PluginCall';
-import { NodeApiResultPayload, NodeExitPayload, NodeInfoPayload, NodeLinePayload, NodeRunningPayload } from '../BridgeInterfaces';
+import {
+  NodeApiResultPayload,
+  NodeExitPayload,
+  NodeInfoPayload,
+  NodeLinePayload,
+  NodeLogPayload,
+  NodeRunningPayload,
+  NodeStatusPayload,
+} from '../BridgeInterfaces';
 import { NodeRuntime } from '../NodeRuntime';
 
 /**
@@ -16,7 +24,11 @@ import { NodeRuntime } from '../NodeRuntime';
  * from the native side (native HTTP *can* reach the loopback) and returns the
  * response body to JS.
  *
- * Methods: `start`, `stop`, `getStatus`, `getInfo`, `callApi`.
+ * `getStatus` / `getLog` also hand back the last error and the tail of the
+ * native boot log (`<node dir>/node-boot.log`), so a backend that never comes
+ * up can be diagnosed straight from the app UI.
+ *
+ * Methods: `start`, `stop`, `getStatus`, `getInfo`, `getLog`, `callApi`.
  * Events:  `stdout`, `stderr`, `exit`.
  */
 export class NodePlugin extends CapacitorPlugin {
@@ -30,7 +42,7 @@ export class NodePlugin extends CapacitorPlugin {
       this.notifyListeners(level === 'error' ? 'stderr' : 'stdout', out);
     });
     this.node.onExit((code: number) => {
-      const exited: NodeExitPayload = { code: code };
+      const exited: NodeExitPayload = { code: code, log: this.node.getLastLog() };
       this.notifyListeners('exit', exited);
     });
   }
@@ -40,28 +52,42 @@ export class NodePlugin extends CapacitorPlugin {
   }
 
   getMethods(): string[] {
-    return ['start', 'stop', 'getStatus', 'getInfo', 'callApi'];
+    return ['start', 'stop', 'getStatus', 'getInfo', 'getLog', 'callApi'];
   }
 
   start(call: PluginCall): void {
     const ok: boolean = this.node.start();
     if (ok) {
-      const started: NodeRunningPayload = { running: true };
+      const started: NodeRunningPayload = { running: true, error: '' };
       call.resolve(started);
     } else {
-      call.reject(this.node.getLastError() || 'node failed to start', 'START_FAILED');
+      const failed: NodeRunningPayload = {
+        running: false,
+        error: this.node.getLastError() || 'node failed to start',
+      };
+      call.reject(failed.error, 'START_FAILED', failed);
     }
   }
 
   stop(call: PluginCall): void {
     this.node.stop();
-    const stopped: NodeRunningPayload = { running: false };
+    const stopped: NodeRunningPayload = { running: false, error: '' };
     call.resolve(stopped);
   }
 
   getStatus(call: PluginCall): void {
-    const status: NodeRunningPayload = { running: this.node.isRunning() };
+    const status: NodeStatusPayload = {
+      running: this.node.isRunning(),
+      error: this.node.getLastError(),
+      log: this.node.readLog(),
+    };
     call.resolve(status);
+  }
+
+  /** Tail of `<node dir>/node-boot.log` — the runtime's own trace. */
+  getLog(call: PluginCall): void {
+    const payload: NodeLogPayload = { log: this.node.readLog() };
+    call.resolve(payload);
   }
 
   getInfo(call: PluginCall): void {

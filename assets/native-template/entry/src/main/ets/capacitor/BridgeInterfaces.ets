@@ -246,14 +246,34 @@ export interface NodeLinePayload {
   line: string;
 }
 
-/** Node.js process exit. */
+/** Node.js process exit. `log` is the boot log captured at exit time. */
 export interface NodeExitPayload {
   code: number;
+  log: string;
 }
 
-/** `Node.getStatus` / `Node.start` / `Node.stop`. */
+/** `Node.start` / `Node.stop`. `error` is empty on success. */
 export interface NodeRunningPayload {
   running: boolean;
+  error: string;
+}
+
+/**
+ * `Node.getStatus`.
+ *
+ * `error` is the last failure reason (native start error, crash signal, …) and
+ * `log` is the tail of the native boot log. Both exist so a runtime that never
+ * comes up can be diagnosed on the device without `hdc hilog`.
+ */
+export interface NodeStatusPayload {
+  running: boolean;
+  error: string;
+  log: string;
+}
+
+/** `Node.getLog` — the tail of the native boot log. */
+export interface NodeLogPayload {
+  log: string;
 }
 
 /** `Node.getInfo`. */

@@ -10,14 +10,15 @@
 # Usage:
 #   ./scripts/build-hap.sh arm64      # default
 #   ./scripts/build-hap.sh x64        # emulator
+#
+# Note: no Node.js headers are needed anymore — libcapacitor_node.so does not
+# compile against libnode; it dlopen()s it at runtime (see
+# native/node-runtime/CMakeLists.txt).
 set -euo pipefail
 
 ARCH="${1:-arm64}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-
-echo "==> preparing Node headers"
-bash "$ROOT/scripts/prepare-headers.sh"
 
 echo "==> preparing libnode.so ($ARCH)"
 bash "$ROOT/scripts/prepare-node.sh" "$ARCH"

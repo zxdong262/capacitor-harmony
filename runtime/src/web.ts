@@ -1,5 +1,5 @@
 import type { PluginListenerHandle } from '@capacitor/core';
-import type { NodePlugin, NodeStartResult, NodeStatus, NodeInfo } from './definitions';
+import type { NodePlugin, NodeStartResult, NodeStatus, NodeInfo, NodeLog } from './definitions';
 
 /**
  * Web (non-HarmonyOS) fallback for the Node runtime.
@@ -11,19 +11,23 @@ import type { NodePlugin, NodeStartResult, NodeStatus, NodeInfo } from './defini
  */
 export class NodeWeb implements NodePlugin {
   start(): Promise<NodeStartResult> {
-    return Promise.resolve({ running: false });
+    return Promise.resolve({ running: false, error: 'no embedded node on web' });
   }
 
   stop(): Promise<NodeStatus> {
-    return Promise.resolve({ running: false });
+    return Promise.resolve({ running: false, error: '', log: '' });
   }
 
   getStatus(): Promise<NodeStatus> {
-    return Promise.resolve({ running: false });
+    return Promise.resolve({ running: false, error: 'no embedded node on web', log: '' });
   }
 
   getInfo(): Promise<NodeInfo> {
     return Promise.resolve({ entry: '', entryPath: '', dir: '' });
+  }
+
+  getLog(): Promise<NodeLog> {
+    return Promise.resolve({ log: '' });
   }
 
   addListener(): Promise<PluginListenerHandle> {

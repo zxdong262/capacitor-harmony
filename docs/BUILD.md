@@ -61,12 +61,10 @@ What it does:
    crash inside V8.
 4. Copies the file to `entry/libs/<abi>/libnode.so`.
 
-The C++ headers are fetched separately (used by the NDK to compile
-`libcapacitor_node.so`):
-
-```bash
-./scripts/prepare-headers.sh   # downloads node v24.2.0 headers → entry/node-headers/include
-```
+> **No Node.js headers are needed.** `libcapacitor_node.so` does not compile
+> against `libnode.so` — it `dlopen()`s it at runtime from the app's lib dir
+> (linking it would record `DT_NEEDED libnode.so.137`, its SONAME, which can
+> never be resolved because the shipped file is named `libnode.so`).
 
 ---
 
@@ -78,7 +76,7 @@ All-in-one:
 ./scripts/build-hap.sh arm64     # or: ./scripts/build-hap.sh x64
 ```
 
-This runs the two prepare scripts, then:
+This runs the prepare script, then:
 
 ```bash
 ./hvigorw assembleHap --mode module \
@@ -89,9 +87,10 @@ If `hvigorw` is not on your PATH, open the `harmony/` project in DevEco Studio
 and build the `entry` module, or run the `hvigorw` command above from
 `harmony/`.
 
-> The first build compiles `libcapacitor_node.cpp` (the NAPI glue) and links it
-> against `libnode.so` from `entry/libs/<abi>/`. It needs
-> `entry/node-headers/include` (step 3) and the OHOS NDK on PATH.
+> The first build compiles `libcapacitor_node.cpp` + `node_embed.cpp` into
+> `libcapacitor_node.so` (needs only the OHOS NDK). `libnode.so` is loaded at
+> runtime with `dlopen()` — never linked — and must be present in
+> `entry/libs/<abi>/` so hvigor packs it into the HAP.
 
 ---
 
@@ -133,13 +132,15 @@ harmony: {
 | App crashes on Node start (`IsAllowed` assertion) | A **PIE** `libnode.so` slipped in | The prepare script blocks this; re-download from the official release. |
 | `nodeEntry` not found | `node/main.js` not under `webDir`'s `node/` | Make sure `node/` is copied into `rawfile/node` (it is part of `cap sync`). |
 | WebView blank | `http://localhost/` not served / asset server not intercepting | Check `server.url` and that `bridge.js` is injected; enable `logging: true`. |
-| `libcapacitor_node.so` link errors | node headers missing | Re-run `prepare-headers.sh`; confirm `entry/node-headers/include/node/node.h` exists. |
+| `libcapacitor_node.so` link errors | OHOS NDK / sysroot not on PATH | Install the HarmonyOS native SDK; no Node headers are needed (libnode is dlopen'd at runtime). |
+| `node: stopped` + `node-boot.log` says `dlopen("…libnode.so") failed` | `libnode.so` not packaged into the HAP | Re-run `prepare-node.sh <abi>`; check `entry/libs/<abi>/libnode.so` exists and `collectAllLibs` didn't filter it out. |
+| `node: stopped` + log shows `node::Start returned rc=…` right away | backend entry crashed/exited | Read the `[demo]`/node stack lines above it in `node-boot.log` (shown by `Node.getLog`). |
 
 ---
 
 ## 8. Footprint notes
 
-- `entry/libs/`, `entry/node-headers/`, `oh_modules/`, `build/`, `harmony/` are
+- `entry/libs/`, `oh_modules/`, `build/`, `harmony/` are
   git-ignored (see `.gitignore`). They are generated/downloaded, not source.
 - The template's `startIcon.png` is a placeholder solid-blue asset. Replace
   `entry/src/main/resources/base/media/startIcon.png` with your real icon

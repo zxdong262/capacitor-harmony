@@ -1,31 +1,39 @@
 // node_embed.cpp — embedded Node.js runtime for capacitor-harmony.
 //
-// This translation unit is linked against the prebuilt shared libnode.so
-// shipped by https://github.com/electerm/ohos-node-shared (built --shared so
-// node::Start is directly callable). It must NOT include the OHOS NAPI
-// headers — that ABI clash is why the NAPI surface lives in
-// capacitor_node.cpp and talks to this code only through node_bridge.h.
+// This translation unit loads the prebuilt shared libnode.so shipped by
+// https://github.com/electerm/ohos-node-shared AT RUNTIME with dlopen() —
+// exactly how electerm-harmony consumes the same library. It must NOT link
+// libnode.so at build time: that records DT_NEEDED "libnode.so.137" (the
+// library's SONAME) while the file shipped in the HAP is named "libnode.so",
+// and the OHOS linker resolves DT_NEEDED by exact filename only — so the
+// napi module would fail to load. dlopen("libnode.so") from inside the
+// module, in contrast, searches the app's lib dir (the caller's linker
+// namespace) and finds the file. It also keeps the module loadable when
+// libnode.so is absent, so the failure becomes a reportable error instead
+// of a broken import.
 //
-// On-device launch recipe (proven in electerm-harmony's libnode_ctl, which
-// runs the same ohos-node-shared build):
-//   1. repair stdio fds 0/1/2 — libuv's uv__close asserts fd > STDERR_FILENO;
-//   2. install a SIGSYS seccomp shim — the app sandbox traps syscalls node
+// This TU includes no NAPI and no Node headers — it talks to capacitor_node.cpp
+// only through node_bridge.h, and to libnode.so only through dlsym. That is
+// why it can be compiled into the same shared library as the OHOS NAPI glue.
+//
+// On-device launch recipe (proven in electerm-harmony, which runs the same
+// ohos-node-shared build):
+//   1. dlopen libnode.so (same dir as this module, else namespace search) and
+//      dlsym node::Start; every step is written to the boot log;
+//   2. repair stdio fds 0/1/2 — libuv's uv__close asserts fd > STDERR_FILENO;
+//   3. install a SIGSYS seccomp shim — the app sandbox traps syscalls node
 //      probes (membarrier, perf_event_open, io_uring_setup, …) and the
 //      default action kills the thread; the shim converts the trap into a
 //      logged ENOSYS so node's probes no-op instead of aborting;
-//   3. run node::Start with --jitless (THE fix for OpenHarmony's W^X policy:
+//   4. run node::Start with --jitless (THE fix for OpenHarmony's W^X policy:
 //      V8 never maps PROT_EXEC pages, so no mprotect(PROT_EXEC)/EPERM ->
 //      CHECK_EQ(ENOMEM, errno) abort) plus --no-verify-heap;
-//   4. capture node's stdout/stderr via a pipe and forward each line to the
+//   5. capture node's stdout/stderr via a pipe and forward each line to the
 //      OHOS side (out_cb) and a boot log file for on-device debugging.
-//
-// The previous implementation used the embedder API (InitializeOncePerProcess
-// + CommonEnvironmentSetup + SpinEventLoop) with no --jitless and no seccomp
-// shim. On OpenHarmony that aborted inside V8/libuv at startup, so the Node
-// thread died immediately and the UI reported "node: stopped".
 
 #include "node_bridge.h"
 
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -44,9 +52,6 @@
 #include <mutex>
 #include <string>
 
-#include <node.h>
-#include <uv.h>
-
 static std::mutex g_state_mutex;
 static bool g_running = false;
 static int g_exit_code = 0;
@@ -54,6 +59,21 @@ static cap_output_cb g_out_cb = nullptr;
 static cap_exit_cb g_exit_cb = nullptr;
 static int g_log_fd = -1;     // boot log file (<data_dir>/node-boot.log)
 static pid_t g_node_tid = 0;  // tid of the node::Start thread
+
+/** Signature of node::Start(int argc, char* argv[]). */
+typedef int (*node_start_fn)(int argc, char* argv[]);
+
+// libnode.so handle + resolved entry point. Loaded once, never closed —
+// node keeps global state long after Start returns.
+static void* g_libnode = nullptr;
+static node_start_fn g_node_start = nullptr;
+
+// Mangled names for node::Start across Node major versions (int/char** form).
+static const char* kNodeStartSymbols[] = {
+    "_ZN4node5StartEiPPc",   // int node::Start(int, char**) — Node 24
+    "_ZN4node5StartEiPKPKc", // int node::Start(int, const char* const*)
+    nullptr,
+};
 
 // ---------------------------------------------------------------- logging ---
 // Normal-context logging (NOT from a signal handler): writes to the boot log
@@ -76,6 +96,96 @@ static void SafeWrite(const char* s) {
   size_t n = strlen(s);
   ssize_t ignored = write(g_log_fd, s, n);
   (void)ignored;
+}
+
+// ------------------------------------------------------------- libnode -------
+/**
+ * dlopen libnode.so and resolve node::Start.
+ *
+ * Candidate paths, in order:
+ *   1. the directory THIS module was loaded from (dladdr) — on device that
+ *      is the app's installed lib dir, where the HAP's libs/arm64-v8a files
+ *      (libnode.so included) were extracted;
+ *   2. the bare name "libnode.so" — the linker namespace of the caller (our
+ *      napi module) has the app lib dir on its search path, so this resolves
+ *      the same file even when dladdr is unavailable;
+ *   3. the SONAME "libnode.so.137" — in case a future packaging ships the
+ *      file under its real SONAME.
+ *
+ * Every attempt is written to the boot log, so a missing/broken libnode.so
+ * can be diagnosed from the app UI (the log is what Node.getLog returns).
+ *
+ * Returns nullptr after logging the reason on failure.
+ */
+static node_start_fn LoadLibnode() {
+  if (g_node_start != nullptr) {
+    return g_node_start;
+  }
+  if (g_libnode != nullptr) {
+    // Loaded before but the symbol was not found — do not retry endlessly.
+    return nullptr;
+  }
+
+  std::string last_err = "not attempted";
+  const char* candidates[4] = {nullptr, "libnode.so", "libnode.so.137", nullptr};
+
+  // Candidate 0: directory of this very module (dladdr needs no knowledge of
+  // bundle paths and works for every app that ships libnode.so in its HAP).
+  char self_dir[4096] = {0};
+  Dl_info info;
+  memset(&info, 0, sizeof(info));
+  if (dladdr((void*)&LoadLibnode, &info) != 0 && info.dli_fname != nullptr &&
+      info.dli_fname[0] == '/') {
+    snprintf(self_dir, sizeof(self_dir), "%s", info.dli_fname);
+    char* slash = strrchr(self_dir, '/');
+    if (slash != nullptr) {
+      *(slash + 1) = '\0';
+      size_t len = strlen(self_dir);
+      if (len + strlen("libnode.so") + 1 < sizeof(self_dir)) {
+        memmove(self_dir + len, "libnode.so", strlen("libnode.so") + 1);
+        candidates[0] = self_dir;
+      }
+    }
+  }
+
+  for (int i = 0; i < 4 && candidates[i] != nullptr; i++) {
+    LogLine("log", (std::string("node_embed: dlopen(\"") + candidates[i] +
+                     "\", RTLD_NOW | RTLD_LOCAL)")
+                        .c_str());
+    void* h = dlopen(candidates[i], RTLD_NOW | RTLD_LOCAL);
+    if (h == nullptr) {
+      const char* err = dlerror();
+      last_err = std::string(candidates[i]) + ": " +
+                 (err != nullptr ? err : "dlopen returned NULL");
+      LogLine("log",
+              (std::string("node_embed: dlopen failed — ") + last_err).c_str());
+      continue;
+    }
+    g_libnode = h;
+    for (int s = 0; kNodeStartSymbols[s] != nullptr; s++) {
+      void* sym = dlsym(h, kNodeStartSymbols[s]);
+      if (sym != nullptr) {
+        g_node_start = (node_start_fn)sym;
+        LogLine("log",
+                (std::string("node_embed: resolved node::Start as ") +
+                 kNodeStartSymbols[s])
+                    .c_str());
+        return g_node_start;
+      }
+    }
+    const char* err = dlerror();
+    last_err = std::string("node::Start not exported by ") + candidates[i] +
+               (err != nullptr ? std::string(" (") + err + ")" : std::string());
+    LogLine("error",
+            (std::string("node_embed: ") + last_err).c_str());
+    // Keep g_libnode (avoid reloading the same image) and give up.
+    return nullptr;
+  }
+
+  LogLine("error",
+          (std::string("node_embed: could not load libnode.so — ") + last_err)
+              .c_str());
+  return nullptr;
 }
 
 // ------------------------------------------------------- SIGSYS shim --------
@@ -144,11 +254,26 @@ static void InstallSigsysShim() {
 // Name the killer signal in the boot log (and park the node thread instead of
 // dying) so the app survives and the UI can show "stopped" with a reason.
 static void CrashMarkerHandler(int sig, siginfo_t* si, void* ctx) {
-  (void)si;
-  (void)ctx;
-  char b[128];
-  int n = snprintf(b, sizeof(b), "[embed] fatal: signal %d\n", sig);
-  if (n > 0) SafeWrite(b);  // boot log only — LogLine is not async-signal-safe
+  // Name the killer precisely (signal + fault address + pc) — this is usually
+  // the only clue we get on-device, since the trap happens before node prints
+  // anything. Boot log only: LogLine is not async-signal-safe.
+  unsigned long fault_addr = si ? (unsigned long)si->si_addr : 0;
+  int si_code = si ? si->si_code : 0;
+  unsigned long pc = 0;
+#if defined(__aarch64__)
+  if (ctx != nullptr) {
+    pc = (unsigned long)((ucontext_t*)ctx)->uc_mcontext.pc;
+  }
+#elif defined(__x86_64__)
+  if (ctx != nullptr) {
+    pc = (unsigned long)((ucontext_t*)ctx)->uc_mcontext.gregs[REG_RIP];
+  }
+#endif
+  char b[256];
+  int n = snprintf(b, sizeof(b),
+                   "[embed] fatal: signal %d code %d addr 0x%lx pc 0x%lx\n",
+                   sig, si_code, fault_addr, pc);
+  if (n > 0) SafeWrite(b);
   long tid = (long)syscall(__NR_gettid);
   if (g_node_tid > 0 && tid == (long)g_node_tid) {
     // Node's thread crashed — keep the app alive, surface the failure.
@@ -233,6 +358,16 @@ struct NodeArgs {
   std::string data_dir;
 };
 
+/** Mark the runtime stopped and hand the exit code to the OHOS side once. */
+static void FinishWith(int rc) {
+  std::lock_guard<std::mutex> lock(g_state_mutex);
+  g_running = false;
+  g_exit_code = rc;
+  cap_exit_cb cb = g_exit_cb;
+  g_exit_cb = nullptr;
+  if (cb) cb(rc);
+}
+
 static void* NodeThreadMain(void* arg) {
   NodeArgs* na = static_cast<NodeArgs*>(arg);
   std::string entry_path = std::move(na->entry_path);
@@ -245,7 +380,22 @@ static void* NodeThreadMain(void* arg) {
   // boot log (same file electerm-harmony writes, for on-device debugging)
   if (!data_dir.empty()) {
     std::string logPath = data_dir + "/node-boot.log";
-    g_log_fd = open(logPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int fd = open(logPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0) {
+      // Never keep the boot log on a std fd: RepairStdio()/dup2() below take
+      // over 0/1/2, which would silently redirect the log into the stdio pipe
+      // (and, worse, make SafeWrite() feed the reader its own output).
+      if (fd <= 2) {
+        int high = fcntl(fd, F_DUPFD, 3);
+        if (high >= 0) {
+          close(fd);
+          fd = high;
+        }
+      }
+      g_log_fd = fd;
+    } else {
+      LogLine("error", "node_embed: cannot open boot log");
+    }
   }
 
   RepairStdio();
@@ -256,7 +406,20 @@ static void* NodeThreadMain(void* arg) {
   setenv("HOST", "127.0.0.1", 1);
   setenv("PORT", "3000", 1);
   if (!data_dir.empty()) {
-    uv_chdir(data_dir.c_str());
+    if (chdir(data_dir.c_str()) != 0) {
+      LogLine("error", "node_embed: chdir to data dir failed");
+    }
+  }
+
+  // Refuse to start rather than let node call exit() — a missing entry file
+  // would otherwise tear down the whole app process.
+  struct stat entryStat;
+  if (stat(entry_path.c_str(), &entryStat) != 0) {
+    std::string msg = std::string("node_embed: entry file missing: ") + entry_path +
+                      " (errno " + std::to_string(errno) + ")";
+    LogLine("error", msg.c_str());
+    FinishWith(1);
+    return NULL;
   }
 
   // Redirect fd 1/2 onto a pipe so node output is observable.  A 1 MB buffer
@@ -279,6 +442,15 @@ static void* NodeThreadMain(void* arg) {
     LogLine("error", "node_embed: pipe() failed");
   }
 
+  // Load libnode.so NOW (not at process start): a failure here is logged and
+  // reported through exit_cb instead of breaking the whole module import.
+  node_start_fn start_fn = LoadLibnode();
+  if (start_fn == nullptr) {
+    LogLine("error", "node_embed: refusing to continue without libnode.so");
+    FinishWith(1);
+    return NULL;
+  }
+
   // argv for node::Start.  node consumes the flags and runs entry_path as the
   // script (process.argv[1]); --jitless is the OpenHarmony W^X fix.
   char arg0[] = "node";
@@ -289,18 +461,21 @@ static void* NodeThreadMain(void* arg) {
   char* argv[] = {arg0, flag1, flag2, entry_buf, NULL};
   int argc = 4;
 
-  LogLine("log", "node_embed: calling node::Start (--jitless --no-verify-heap)");
-  int rc = node::Start(argc, argv);  // blocks while the server runs
-
-  LogLine("error", "node_embed: node::Start returned — backend stopped");
   {
-    std::lock_guard<std::mutex> lock(g_state_mutex);
-    g_running = false;
-    g_exit_code = rc;
-    cap_exit_cb cb = g_exit_cb;
-    g_exit_cb = nullptr;
-    if (cb) cb(rc);
+    std::string msg = std::string("node_embed: cwd=") + data_dir +
+                      " entry=" + entry_path + " size=" +
+                      std::to_string((long long)entryStat.st_size);
+    LogLine("log", msg.c_str());
   }
+  LogLine("log", "node_embed: calling node::Start (--jitless --no-verify-heap)");
+  int rc = start_fn(argc, argv);  // blocks while the server runs
+
+  {
+    std::string msg = "node_embed: node::Start returned rc=" + std::to_string(rc) +
+                      " — backend stopped";
+    LogLine("error", msg.c_str());
+  }
+  FinishWith(rc);
   return NULL;
 }
 
