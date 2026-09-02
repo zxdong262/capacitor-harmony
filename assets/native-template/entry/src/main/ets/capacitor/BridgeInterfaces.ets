@@ -261,6 +261,12 @@ export interface NodeInfoPayload {
   dir: string;
 }
 
+/** `Node.callApi` — a backend HTTP response proxied from the native side. */
+export interface NodeApiResultPayload {
+  status: number;
+  body: string;
+}
+
 /** `Preferences.get` — value may be any JSON value or null. */
 export interface PrefValuePayload {
   value: Object | null;

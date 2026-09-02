@@ -3,7 +3,7 @@ import { http } from '@kit.NetworkKit';
 import { PluginHost } from '../BridgeInterfaces';
 import { CapacitorPlugin } from '../CapacitorPlugin';
 import { PluginCall } from '../PluginCall';
-import { NodeExitPayload, NodeInfoPayload, NodeLinePayload, NodeRunningPayload } from '../BridgeInterfaces';
+import { NodeApiResultPayload, NodeExitPayload, NodeInfoPayload, NodeLinePayload, NodeRunningPayload } from '../BridgeInterfaces';
 import { NodeRuntime } from '../NodeRuntime';
 
 /**
@@ -96,10 +96,11 @@ export class NodePlugin extends CapacitorPlugin {
         connectTimeout: 5000,
         readTimeout: 5000,
       })
-      .then((resp: http.HttpResponse) => {
+      .then((resp) => {
         const body: string =
           typeof resp.result === 'string' ? resp.result : JSON.stringify(resp.result);
-        call.resolve({ status: resp.responseCode, body: body });
+        const result: NodeApiResultPayload = { status: resp.responseCode, body: body };
+        call.resolve(result);
         req.destroy();
       })
       .catch((err: Error) => {
