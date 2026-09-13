@@ -1,0 +1,65 @@
+import { webview } from '@kit.ArkWeb';
+import { common } from '@kit.AbilityKit';
+import { BridgeHolder } from '../capacitor/bridgeInstance';
+import { CapacitorBridge } from '../capacitor/CapacitorBridge';
+
+@Entry
+@Component
+struct Index {
+  private controller: webview.WebviewController = new webview.WebviewController();
+  private bridge: CapacitorBridge | null = null;
+  @State serverUrl: string = 'http://localhost/';
+
+  aboutToAppear(): void {
+    const ctx: common.UIAbilityContext = BridgeHolder.context!;
+    this.bridge = new CapacitorBridge(ctx, this.controller);
+    BridgeHolder.bridge = this.bridge;
+    this.bridge.init();
+    this.serverUrl = this.bridge.getServerUrl();
+  }
+
+  onBackPress(): boolean {
+    // Capacitor contract first: if JS registered an `App.backButton`
+    // listener, let the web layer decide (usually App.exitApp()).
+    // Otherwise drive the in-app browser history (React) instead of the
+    // outer WebView, matching the demo app's address-bar navigation.
+    if (this.bridge?.onBackPressed()) {
+      return true;
+    }
+    this.controller.runJavaScript('window.__browserBack ? window.__browserBack() : false');
+    return true;
+  }
+
+  build() {
+    Column() {
+      Web({ src: this.serverUrl, controller: this.controller })
+        .javaScriptAccess(true)
+        .domStorageAccess(true)
+        .fileAccess(true)
+        .imageAccess(true)
+        .mixedMode(MixedMode.All)
+        .databaseAccess(true)
+        .geolocationAccess(true)
+        .cacheMode(CacheMode.Default)
+        .javaScriptProxy({
+          object: this.bridge!.getProxyObject(),
+          name: 'harmonyBridge',
+          methodList: ['postMessage'],
+          controller: this.controller,
+        })
+        .onInterceptRequest((event: OnInterceptRequestEvent) => {
+          if (!this.bridge) {
+            return null;
+          }
+          return this.bridge.handleInterceptRequest(event.request);
+        })
+        .onPageEnd(() => {
+          this.bridge?.onPageReady();
+        })
+        .width('100%')
+        .height('100%')
+    }
+    .width('100%')
+    .height('100%')
+  }
+}
